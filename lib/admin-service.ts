@@ -11,12 +11,24 @@ export interface AdminEmployee {
   fullName: string;
   employeeCode: string;
   role: string;
+  teamId: string | null;
+  teamName: string | null;
 }
 
 export async function listEmployees(): Promise<AdminEmployee[]> {
-  const { data, error } = await client().from("profiles").select("id,full_name,employee_code,role").order("full_name");
+  const { data, error } = await client().from("profiles").select("id,full_name,employee_code,role,team_id,teams(name)").order("full_name");
   if (error) throw error;
-  return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name, employeeCode: row.employee_code, role: row.role }));
+  return (data ?? []).map((row) => {
+    const team = Array.isArray(row.teams) ? row.teams[0] : row.teams;
+    return {
+      id: row.id,
+      fullName: row.full_name,
+      employeeCode: row.employee_code,
+      role: row.role,
+      teamId: row.team_id,
+      teamName: team?.name ?? null,
+    };
+  });
 }
 
 export interface CreateEmployeeInput {
@@ -24,7 +36,7 @@ export interface CreateEmployeeInput {
   email: string;
   employeeCode: string;
   role: string;
-  managerId?: string | null;
+  teamId?: string | null;
 }
 
 export async function createEmployee(input: CreateEmployeeInput): Promise<AdminEmployee> {
@@ -34,7 +46,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       email: input.email,
       employeeCode: input.employeeCode,
       role: input.role,
-      managerId: input.managerId || null,
+      teamId: input.teamId || null,
     },
   });
   if (error) {
@@ -43,7 +55,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
     throw new Error(body?.error ?? error.message);
   }
   if (data?.error) throw new Error(data.error);
-  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role };
+  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null };
 }
 
 export interface AdminManagerOption {
@@ -59,6 +71,40 @@ export async function listManagers(): Promise<AdminManagerOption[]> {
     .order("full_name");
   if (error) throw error;
   return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }));
+}
+
+export interface AdminTeam {
+  id: string;
+  name: string;
+  managerId: string | null;
+  managerName: string | null;
+}
+
+export async function listTeams(): Promise<AdminTeam[]> {
+  const { data, error } = await client()
+    .from("teams")
+    .select("id,name,manager_id,profiles!teams_manager_id_fkey(full_name)")
+    .order("name");
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const manager = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return { id: row.id, name: row.name, managerId: row.manager_id, managerName: manager?.full_name ?? null };
+  });
+}
+
+export interface CreateTeamInput {
+  name: string;
+  managerId?: string | null;
+}
+
+export async function createTeam(input: CreateTeamInput): Promise<AdminTeam> {
+  const { data, error } = await client()
+    .from("teams")
+    .insert({ name: input.name, manager_id: input.managerId || null })
+    .select("id,name,manager_id")
+    .single();
+  if (error) throw error;
+  return { id: data.id, name: data.name, managerId: data.manager_id, managerName: null };
 }
 
 export interface AdminLeaveRequest {

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     return json({ error: "Only HR administrators can add employees." }, 403);
   }
 
-  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; managerId?: string | null };
+  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; teamId?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -65,17 +65,17 @@ Deno.serve(async (req) => {
   const email = body.email?.trim().toLowerCase();
   const employeeCode = body.employeeCode?.trim();
   const role = body.role?.trim() ?? "employee";
-  const managerId = body.managerId?.trim() || null;
+  const teamId = body.teamId?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
   if (!email) return json({ error: "Email is required." }, 400);
   if (!employeeCode) return json({ error: "Employee code is required." }, 400);
   if (!VALID_ROLES.includes(role)) return json({ error: "Invalid role." }, 400);
 
-  if (managerId) {
-    const { data: manager } = await adminClient.from("profiles").select("role").eq("id", managerId).maybeSingle();
-    if (!manager || !["manager", "hr_admin"].includes(manager.role)) {
-      return json({ error: "Selected manager is invalid." }, 400);
+  if (teamId) {
+    const { data: team } = await adminClient.from("teams").select("id").eq("id", teamId).maybeSingle();
+    if (!team) {
+      return json({ error: "Selected team is invalid." }, 400);
     }
   }
 
@@ -86,8 +86,8 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileError } = await adminClient
     .from("profiles")
-    .insert({ id: invited.user.id, full_name: fullName, employee_code: employeeCode, role, manager_id: managerId })
-    .select("id,full_name,employee_code,role")
+    .insert({ id: invited.user.id, full_name: fullName, employee_code: employeeCode, role, team_id: teamId })
+    .select("id,full_name,employee_code,role,team_id")
     .single();
 
   if (profileError) {
@@ -101,5 +101,6 @@ Deno.serve(async (req) => {
     fullName: profile.full_name,
     employeeCode: profile.employee_code,
     role: profile.role,
+    teamId: profile.team_id,
   });
 });
