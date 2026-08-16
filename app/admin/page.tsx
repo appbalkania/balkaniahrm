@@ -151,28 +151,12 @@ function AdminLogin({ configured }: { configured: boolean }) {
   );
 }
 
-const MODULE_ORDER_KEY = "balkania-admin-module-order";
-const defaultModuleOrder: Module[] = modules.map(([id]) => id);
-
 const MANAGER_MODULES: Module[] = ["attendance", "leaves"];
 
 function AdminShell({ profile }: { profile: Profile }) {
-  const allowedModules: Module[] = profile.role === "manager" ? MANAGER_MODULES : defaultModuleOrder;
-  const [module, setModule] = useState<Module>(allowedModules[0]);
+  const visibleModules = profile.role === "manager" ? modules.filter(([id]) => MANAGER_MODULES.includes(id)) : modules;
+  const [module, setModule] = useState<Module>(visibleModules[0][0]);
   const [notice, setNotice] = useState("");
-  const [moduleOrder, setModuleOrder] = useState<Module[]>(defaultModuleOrder);
-  const [reordering, setReordering] = useState(false);
-
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(MODULE_ORDER_KEY) ?? "null") as Module[] | null;
-      if (saved && saved.length === defaultModuleOrder.length && defaultModuleOrder.every((id) => saved.includes(id))) {
-        setModuleOrder(saved);
-      }
-    } catch {
-      // Ignore malformed storage; fall back to the default order.
-    }
-  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -180,57 +164,16 @@ function AdminShell({ profile }: { profile: Profile }) {
     return () => clearTimeout(id);
   }, [notice]);
 
-  function moveModule(id: Module, direction: -1 | 1) {
-    setModuleOrder((prev) => {
-      const visible = prev.filter((m) => allowedModules.includes(m));
-      const visibleIndex = visible.indexOf(id);
-      const targetVisibleIndex = visibleIndex + direction;
-      if (targetVisibleIndex < 0 || targetVisibleIndex >= visible.length) return prev;
-      const swapWith = visible[targetVisibleIndex];
-      const next = [...prev];
-      const i = next.indexOf(id);
-      const j = next.indexOf(swapWith);
-      [next[i], next[j]] = [next[j], next[i]];
-      localStorage.setItem(MODULE_ORDER_KEY, JSON.stringify(next));
-      return next;
-    });
-  }
-
-  const orderedModules = moduleOrder
-    .filter((id) => allowedModules.includes(id))
-    .map((id) => modules.find(([moduleId]) => moduleId === id))
-    .filter((entry): entry is (typeof modules)[number] => entry !== undefined);
-
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
-        <div className="sidebar-nav-head">
-          <p>HR ADMIN</p>
-          <button className="reorder-toggle" onClick={() => setReordering((r) => !r)}>
-            <Icon name="swap" size={12} /> {reordering ? "Done" : "Reorder"}
+        <p>HR ADMIN</p>
+        {visibleModules.map(([id, label, icon]) => (
+          <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>
+            <Icon name={icon} size={17} />
+            {label}
           </button>
-        </div>
-        {orderedModules.map(([id, label, icon], index) => (
-          <div key={id} className="admin-nav-item">
-            <button
-              className={`admin-nav-main ${module === id ? "active" : ""}`}
-              onClick={() => !reordering && setModule(id)}
-            >
-              <Icon name={icon} size={17} />
-              {label}
-            </button>
-            {reordering && (
-              <span className="reorder-controls">
-                <button aria-label={`Move ${label} up`} disabled={index === 0} onClick={() => moveModule(id, -1)}>
-                  <Icon name="chevronUp" size={13} />
-                </button>
-                <button aria-label={`Move ${label} down`} disabled={index === orderedModules.length - 1} onClick={() => moveModule(id, 1)}>
-                  <Icon name="chevronDown" size={13} />
-                </button>
-              </span>
-            )}
-          </div>
         ))}
         <div className="sidebar-footer">
           <span>Signed in as {profile.fullName}</span>
