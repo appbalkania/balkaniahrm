@@ -39,19 +39,10 @@
 .admin-sidebar { padding: 26px 16px; background: linear-gradient(180deg, var(--navy), var(--navy-dark)); color: #dce8ff; display: flex; flex-direction: column; }
 .admin-brand { display: flex; align-items: center; gap: 9px; font-size: 19px; color: #fff; font-weight: 700; }
 .admin-brand img { display: block; width: 30px; height: 30px; border-radius: 9px; }
-.sidebar-nav-head { display: flex; align-items: center; justify-content: space-between; margin: 32px 4px 10px; }
-.sidebar-nav-head p { margin: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: #7f9bdf; }
-.admin-sidebar .reorder-toggle { width: auto; padding: 4px 9px; gap: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); font-size: 10.5px; font-weight: 700; color: #9db3e8; }
-.admin-sidebar .reorder-toggle:hover { background: rgba(255, 255, 255, 0.14); color: #dce8ff; }
+.admin-sidebar > p { margin: 32px 12px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: #7f9bdf; }
 .admin-sidebar button { width: 100%; display: flex; gap: 11px; align-items: center; padding: 11px 12px; border: 0; border-radius: 10px; background: transparent; color: #c3d2f2; text-align: left; font-size: 13.5px; font-weight: 500; }
 .admin-sidebar button:hover { background: rgba(255, 255, 255, 0.06); }
 .admin-sidebar button.active { background: var(--coral); color: #fff; }
-.admin-nav-item { display: flex; align-items: center; gap: 4px; }
-.admin-nav-item .admin-nav-main { width: auto; flex: 1; min-width: 0; }
-.reorder-controls { display: flex; flex-direction: column; gap: 2px; }
-.admin-sidebar .reorder-controls button { width: 22px; height: 22px; padding: 0; display: grid; place-items: center; background: rgba(255, 255, 255, 0.06); border-radius: 6px; color: #c3d2f2; }
-.admin-sidebar .reorder-controls button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
-.admin-sidebar .reorder-controls button:disabled { opacity: 0.3; }
 .sidebar-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 12px; color: #8da9dd; display: flex; flex-direction: column; gap: 8px; }
 .sidebar-signout { display: flex; align-items: center; gap: 7px; padding: 0 !important; background: transparent; border: 0; color: #dce8ff !important; font-size: 12.5px; font-weight: 600; text-decoration: none; }
 
