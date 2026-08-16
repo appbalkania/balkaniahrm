@@ -13,12 +13,14 @@ import {
   listAttendanceDevices,
   listAttendanceSessions,
   listEmployees,
+  listManagers,
   listPendingLeaveRequests,
   listWorkSchedules,
   reviewLeaveRequest,
   type AdminAttendanceSession,
   type AdminEmployee,
   type AdminLeaveRequest,
+  type AdminManagerOption,
   type AdminWorkSchedule,
   type DashboardStats,
 } from "../../lib/admin-service";
@@ -152,12 +154,14 @@ function AdminLogin({ configured }: { configured: boolean }) {
 const MODULE_ORDER_KEY = "balkania-admin-module-order";
 const defaultModuleOrder: Module[] = modules.map(([id]) => id);
 
+const MANAGER_MODULES: Module[] = ["attendance", "leaves"];
+
 function AdminShell({ profile }: { profile: Profile }) {
-  const [module, setModule] = useState<Module>("dashboard");
+  const allowedModules: Module[] = profile.role === "manager" ? MANAGER_MODULES : defaultModuleOrder;
+  const [module, setModule] = useState<Module>(allowedModules[0]);
   const [notice, setNotice] = useState("");
   const [moduleOrder, setModuleOrder] = useState<Module[]>(defaultModuleOrder);
   const [reordering, setReordering] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     try {
@@ -178,48 +182,24 @@ function AdminShell({ profile }: { profile: Profile }) {
 
   function moveModule(id: Module, direction: -1 | 1) {
     setModuleOrder((prev) => {
-      const index = prev.indexOf(id);
-      const target = index + direction;
-      if (target < 0 || target >= prev.length) return prev;
+      const visible = prev.filter((m) => allowedModules.includes(m));
+      const visibleIndex = visible.indexOf(id);
+      const targetVisibleIndex = visibleIndex + direction;
+      if (targetVisibleIndex < 0 || targetVisibleIndex >= visible.length) return prev;
+      const swapWith = visible[targetVisibleIndex];
       const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
+      const i = next.indexOf(id);
+      const j = next.indexOf(swapWith);
+      [next[i], next[j]] = [next[j], next[i]];
       localStorage.setItem(MODULE_ORDER_KEY, JSON.stringify(next));
       return next;
     });
   }
 
   const orderedModules = moduleOrder
+    .filter((id) => allowedModules.includes(id))
     .map((id) => modules.find(([moduleId]) => moduleId === id))
     .filter((entry): entry is (typeof modules)[number] => entry !== undefined);
-
-  const canExport = module === "employees" || module === "attendance";
-
-  async function handleExport() {
-    const today = new Date().toISOString().slice(0, 10);
-    setExporting(true);
-    try {
-      if (module === "employees") {
-        const rows = await listEmployees();
-        downloadCsv(
-          `employees-${today}.csv`,
-          ["Full name", "Employee code", "Role"],
-          rows.map((row) => [row.fullName, row.employeeCode, row.role]),
-        );
-      } else if (module === "attendance") {
-        const rows = await listAttendanceSessions(today);
-        downloadCsv(
-          `attendance-${today}.csv`,
-          ["Employee", "Employee code", "Clock in", "Clock out", "Status"],
-          rows.map((row) => [row.employeeName, row.employeeCode, row.clockedInAt ?? "", row.clockedOutAt ?? "", row.state]),
-        );
-      }
-      setNotice("Export downloaded.");
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't export data.");
-    } finally {
-      setExporting(false);
-    }
-  }
 
   return (
     <main className="admin-shell">
@@ -269,11 +249,6 @@ function AdminShell({ profile }: { profile: Profile }) {
             <h1>{modules.find(([id]) => id === module)?.[1]}</h1>
           </div>
           <div className="admin-actions">
-            {canExport && (
-              <button className="outline-button" onClick={handleExport} disabled={exporting}>
-                <Icon name="download" size={15} /> {exporting ? "Exporting…" : "Export"}
-              </button>
-            )}
             <button className="avatar">{initials(profile.fullName)}</button>
           </div>
         </header>
@@ -344,6 +319,7 @@ function Employees({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminEmployee[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   function load() {
     listEmployees()
@@ -355,9 +331,26 @@ function Employees({ setNotice }: NoticeProps) {
     load();
   }, []);
 
+  function handleExport() {
+    if (!rows || rows.length === 0) {
+      setNotice("No employees to export yet.");
+      return;
+    }
+    setExporting(true);
+    try {
+      downloadCsv(
+        `employees-${new Date().toISOString().slice(0, 10)}.csv`,
+        ["Full name", "Employee code", "Role"],
+        rows.map((row) => [row.fullName, row.employeeCode, row.role]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
-      <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} />
+      <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} onExport={handleExport} exporting={exporting} />
       {showAddModal && (
         <AddEmployeeModal
           onClose={() => setShowAddModal(false)}
@@ -396,15 +389,23 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [email, setEmail] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
   const [role, setRole] = useState("employee");
+  const [managerId, setManagerId] = useState("");
+  const [managers, setManagers] = useState<AdminManagerOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listManagers()
+      .then(setManagers)
+      .catch(() => setManagers([]));
+  }, []);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setSaving(true);
     try {
-      const employee = await createEmployee({ fullName, email, employeeCode, role });
+      const employee = await createEmployee({ fullName, email, employeeCode, role, managerId: managerId || null });
       onCreated(employee);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create the employee.");
@@ -443,6 +444,15 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <option value="kiosk">Kiosk</option>
             </select>
           </label>
+          <label>
+            Reports to (manager)
+            <select value={managerId} onChange={(e) => setManagerId(e.target.value)} disabled={saving}>
+              <option value="">No manager</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.fullName}</option>
+              ))}
+            </select>
+          </label>
           {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
@@ -457,6 +467,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
 function Attendance({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminAttendanceSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
@@ -472,9 +483,31 @@ function Attendance({ setNotice }: NoticeProps) {
   const working = rows?.filter((r) => r.state === "working" || r.state === "on_break" || r.state === "on_lunch").length ?? 0;
   const complete = rows?.filter((r) => r.state === "complete").length ?? 0;
 
+  function handleExport() {
+    if (!rows || rows.length === 0) {
+      setNotice("No attendance records to export yet.");
+      return;
+    }
+    setExporting(true);
+    try {
+      downloadCsv(
+        `attendance-${today}.csv`,
+        ["Employee", "Employee code", "Clock in", "Clock out", "Status"],
+        rows.map((row) => [row.employeeName, row.employeeCode, row.clockedInAt ?? "", row.clockedOutAt ?? "", row.state]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
-      <Toolbar action="Review exceptions" onAction={() => setNotice("Attendance exceptions are drawn from attendance_sessions and attendance_events.")} />
+      <Toolbar
+        action="Review exceptions"
+        onAction={() => setNotice("Attendance exceptions are drawn from attendance_sessions and attendance_events.")}
+        onExport={handleExport}
+        exporting={exporting}
+      />
       <div className="admin-stats">
         <Stat label="Currently working" value={String(working)} note="Live sessions" />
         <Stat label="Work completed" value={String(complete)} note="Today" />
@@ -671,11 +704,26 @@ function Settings({ setNotice }: NoticeProps) {
   );
 }
 
-function Toolbar({ action, onAction }: { action: string; onAction: () => void }) {
+function Toolbar({
+  action,
+  onAction,
+  onExport,
+  exporting,
+}: {
+  action: string;
+  onAction: () => void;
+  onExport?: () => void;
+  exporting?: boolean;
+}) {
   return (
     <div className="toolbar">
       <div className="search-input"><Icon name="search" size={15} /><input placeholder="Search" /></div>
       <button className="outline-button"><Icon name="filter" size={15} /> Filters</button>
+      {onExport && (
+        <button className="outline-button" onClick={onExport} disabled={exporting}>
+          <Icon name="download" size={15} /> {exporting ? "Exporting…" : "Export"}
+        </button>
+      )}
       <button className="primary-admin" onClick={onAction}><Icon name="plus" size={15} /> {action}</button>
     </div>
   );

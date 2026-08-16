@@ -50,11 +50,11 @@ Deno.serve(async (req) => {
     .select("role")
     .eq("id", caller.id)
     .maybeSingle();
-  if (!callerProfile || !["manager", "hr_admin"].includes(callerProfile.role)) {
-    return json({ error: "Only managers and HR administrators can add employees." }, 403);
+  if (!callerProfile || callerProfile.role !== "hr_admin") {
+    return json({ error: "Only HR administrators can add employees." }, 403);
   }
 
-  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string };
+  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; managerId?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -65,11 +65,19 @@ Deno.serve(async (req) => {
   const email = body.email?.trim().toLowerCase();
   const employeeCode = body.employeeCode?.trim();
   const role = body.role?.trim() ?? "employee";
+  const managerId = body.managerId?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
   if (!email) return json({ error: "Email is required." }, 400);
   if (!employeeCode) return json({ error: "Employee code is required." }, 400);
   if (!VALID_ROLES.includes(role)) return json({ error: "Invalid role." }, 400);
+
+  if (managerId) {
+    const { data: manager } = await adminClient.from("profiles").select("role").eq("id", managerId).maybeSingle();
+    if (!manager || !["manager", "hr_admin"].includes(manager.role)) {
+      return json({ error: "Selected manager is invalid." }, 400);
+    }
+  }
 
   const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email);
   if (inviteError || !invited.user) {
@@ -78,7 +86,7 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileError } = await adminClient
     .from("profiles")
-    .insert({ id: invited.user.id, full_name: fullName, employee_code: employeeCode, role })
+    .insert({ id: invited.user.id, full_name: fullName, employee_code: employeeCode, role, manager_id: managerId })
     .select("id,full_name,employee_code,role")
     .single();
 
