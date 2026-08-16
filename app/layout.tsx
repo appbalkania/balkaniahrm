@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: "Balkania Check-in",
   description: "Balkania employee attendance and leave portal",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: { icon: "/icon.png", apple: "/icon.png" },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Balkania" },
 };
 
