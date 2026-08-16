@@ -5,6 +5,7 @@ import "./admin.css";
 import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../../lib/auth-service";
 import { getMyProfile } from "../../lib/employee-service";
+import { downloadCsv } from "../../lib/csv";
 import type { Profile } from "../../lib/domain";
 import {
   createEmployee,
@@ -148,9 +149,26 @@ function AdminLogin({ configured }: { configured: boolean }) {
   );
 }
 
+const MODULE_ORDER_KEY = "balkania-admin-module-order";
+const defaultModuleOrder: Module[] = modules.map(([id]) => id);
+
 function AdminShell({ profile }: { profile: Profile }) {
   const [module, setModule] = useState<Module>("dashboard");
   const [notice, setNotice] = useState("");
+  const [moduleOrder, setModuleOrder] = useState<Module[]>(defaultModuleOrder);
+  const [reordering, setReordering] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(MODULE_ORDER_KEY) ?? "null") as Module[] | null;
+      if (saved && saved.length === defaultModuleOrder.length && defaultModuleOrder.every((id) => saved.includes(id))) {
+        setModuleOrder(saved);
+      }
+    } catch {
+      // Ignore malformed storage; fall back to the default order.
+    }
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -158,16 +176,81 @@ function AdminShell({ profile }: { profile: Profile }) {
     return () => clearTimeout(id);
   }, [notice]);
 
+  function moveModule(id: Module, direction: -1 | 1) {
+    setModuleOrder((prev) => {
+      const index = prev.indexOf(id);
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      localStorage.setItem(MODULE_ORDER_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const orderedModules = moduleOrder
+    .map((id) => modules.find(([moduleId]) => moduleId === id))
+    .filter((entry): entry is (typeof modules)[number] => entry !== undefined);
+
+  const canExport = module === "employees" || module === "attendance";
+
+  async function handleExport() {
+    const today = new Date().toISOString().slice(0, 10);
+    setExporting(true);
+    try {
+      if (module === "employees") {
+        const rows = await listEmployees();
+        downloadCsv(
+          `employees-${today}.csv`,
+          ["Full name", "Employee code", "Role"],
+          rows.map((row) => [row.fullName, row.employeeCode, row.role]),
+        );
+      } else if (module === "attendance") {
+        const rows = await listAttendanceSessions(today);
+        downloadCsv(
+          `attendance-${today}.csv`,
+          ["Employee", "Employee code", "Clock in", "Clock out", "Status"],
+          rows.map((row) => [row.employeeName, row.employeeCode, row.clockedInAt ?? "", row.clockedOutAt ?? "", row.state]),
+        );
+      }
+      setNotice("Export downloaded.");
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't export data.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
-        <p>HR ADMIN</p>
-        {modules.map(([id, label, icon]) => (
-          <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>
-            <Icon name={icon} size={17} />
-            {label}
+        <div className="sidebar-nav-head">
+          <p>HR ADMIN</p>
+          <button className="reorder-toggle" onClick={() => setReordering((r) => !r)}>
+            <Icon name="swap" size={12} /> {reordering ? "Done" : "Reorder"}
           </button>
+        </div>
+        {orderedModules.map(([id, label, icon], index) => (
+          <div key={id} className="admin-nav-item">
+            <button
+              className={`admin-nav-main ${module === id ? "active" : ""}`}
+              onClick={() => !reordering && setModule(id)}
+            >
+              <Icon name={icon} size={17} />
+              {label}
+            </button>
+            {reordering && (
+              <span className="reorder-controls">
+                <button aria-label={`Move ${label} up`} disabled={index === 0} onClick={() => moveModule(id, -1)}>
+                  <Icon name="chevronUp" size={13} />
+                </button>
+                <button aria-label={`Move ${label} down`} disabled={index === orderedModules.length - 1} onClick={() => moveModule(id, 1)}>
+                  <Icon name="chevronDown" size={13} />
+                </button>
+              </span>
+            )}
+          </div>
         ))}
         <div className="sidebar-footer">
           <span>Signed in as {profile.fullName}</span>
@@ -186,7 +269,11 @@ function AdminShell({ profile }: { profile: Profile }) {
             <h1>{modules.find(([id]) => id === module)?.[1]}</h1>
           </div>
           <div className="admin-actions">
-            <button className="outline-button"><Icon name="download" size={15} /> Export</button>
+            {canExport && (
+              <button className="outline-button" onClick={handleExport} disabled={exporting}>
+                <Icon name="download" size={15} /> {exporting ? "Exporting…" : "Export"}
+              </button>
+            )}
             <button className="avatar">{initials(profile.fullName)}</button>
           </div>
         </header>
