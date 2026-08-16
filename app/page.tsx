@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
@@ -46,9 +47,15 @@ const actionMap: Record<AttendanceAction, [string, AttendanceEventType]> = {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [wantsEmployeeView, setWantsEmployeeView] = useState(false);
   const configured = useMemo(() => supabaseConfigured(), []);
+
+  useEffect(() => {
+    setWantsEmployeeView(new URLSearchParams(window.location.search).get("view") === "employee");
+  }, []);
 
   useEffect(() => {
     if (!configured) {
@@ -103,8 +110,19 @@ export default function Home() {
     };
   }, [configured]);
 
+  const isAdminRole = profile?.role === "manager" || profile?.role === "hr_admin";
+
+  useEffect(() => {
+    if (status === "signedIn" && isAdminRole && !wantsEmployeeView) {
+      router.replace("/admin");
+    }
+  }, [status, isAdminRole, wantsEmployeeView, router]);
+
   if (status === "loading") return <SplashScreen />;
-  if (status === "signedIn" && profile) return <AppShell profile={profile} configured={configured} />;
+  if (status === "signedIn" && profile) {
+    if (isAdminRole && !wantsEmployeeView) return <SplashScreen />;
+    return <AppShell profile={profile} configured={configured} />;
+  }
   if (status === "needsSetup") return <SetupNoticeScreen />;
   return <LoginScreen configured={configured} />;
 }
@@ -112,7 +130,7 @@ export default function Home() {
 function SplashScreen() {
   return (
     <main className="shell centered">
-      <div className="brand-mark large">B</div>
+      <img src="/icon.svg" alt="" className="brand-mark large" />
       <Icon name="spinner" size={22} className="spin muted-icon" />
     </main>
   );
@@ -153,7 +171,7 @@ function LoginScreen({ configured }: { configured: boolean }) {
 
   return (
     <main className="shell centered login">
-      <div className="brand-mark large">B</div>
+      <img src="/icon.svg" alt="" className="brand-mark large" />
       <h1>Balkania</h1>
       <p className="muted center">Sign in to check in, view your schedule, and manage leave.</p>
 
@@ -260,7 +278,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     <main className="shell">
       <header className="topbar">
         <div className="brand-row">
-          <span className="brand-mark">B</span>
+          <img src="/icon.svg" alt="" className="brand-mark" />
           <strong>Balkania</strong>
         </div>
         <button className="icon-button" onClick={() => setScreen("profile")} aria-label="Open profile">
@@ -642,9 +660,14 @@ function ProfileScreen({ profile, configured, onKiosk }: { profile: Profile; con
         <Setting label="Documents" value="" icon="archive" chevron />
       </section>
       {(profile.role === "hr_admin" || profile.role === "manager") && (
-        <button className="secondary-button" onClick={onKiosk}>
-          <Icon name="device" size={17} /> Open kiosk demo
-        </button>
+        <>
+          <a className="secondary-button" href="/admin">
+            <Icon name="layout" size={17} /> Open Balkania Admin
+          </a>
+          <button className="secondary-button" onClick={onKiosk}>
+            <Icon name="device" size={17} /> Open kiosk demo
+          </button>
+        </>
       )}
       <button className="danger-button" onClick={() => signOut()}>
         <Icon name="logout" size={17} /> Sign out

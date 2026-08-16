@@ -1,7 +1,9 @@
 :root {
-  --brand: #3450e0;
-  --brand-dark: #1f2f8f;
-  --brand-soft: #eef1fd;
+  --brand: #f0355c;
+  --brand-dark: #c92348;
+  --brand-soft: #fdecf0;
+  --navy: #1c2260;
+  --navy-dark: #12153f;
   --ink: #161a2e;
   --muted: #6b7280;
   --line: #e7e9f2;
@@ -57,33 +59,24 @@ body {
   align-items: center;
   justify-content: space-between;
   color: #fff;
-  background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+  background: linear-gradient(135deg, var(--navy), var(--navy-dark));
 }
 
 .brand-row { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
 
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
+  display: block;
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  font-weight: 700;
-  font-size: 15px;
 }
 
 .brand-mark.large {
-  width: 56px;
-  height: 56px;
-  font-size: 24px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--brand), var(--brand-dark));
-  border: none;
-  border-radius: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
   margin-bottom: 6px;
-  box-shadow: 0 10px 24px rgba(52, 80, 224, 0.28);
+  box-shadow: 0 10px 24px rgba(18, 21, 63, 0.3);
 }
 
 .icon-button {
@@ -221,6 +214,8 @@ h2 { font-size: 16px; margin: 0; font-weight: 600; }
   align-items: center;
   justify-content: center;
   gap: 8px;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 .primary-button { background: var(--brand); color: #fff; }
 .primary-button:disabled { opacity: 0.55; }
