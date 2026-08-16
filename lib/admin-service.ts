@@ -19,6 +19,26 @@ export async function listEmployees(): Promise<AdminEmployee[]> {
   return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name, employeeCode: row.employee_code, role: row.role }));
 }
 
+export interface CreateEmployeeInput {
+  fullName: string;
+  email: string;
+  employeeCode: string;
+  role: string;
+}
+
+export async function createEmployee(input: CreateEmployeeInput): Promise<AdminEmployee> {
+  const { data, error } = await client().functions.invoke("create-employee", {
+    body: { fullName: input.fullName, email: input.email, employeeCode: input.employeeCode, role: input.role },
+  });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    const body = await context?.json?.().catch(() => null);
+    throw new Error(body?.error ?? error.message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role };
+}
+
 export interface AdminLeaveRequest {
   id: string;
   leaveType: string;
