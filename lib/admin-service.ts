@@ -24,11 +24,18 @@ export interface CreateEmployeeInput {
   email: string;
   employeeCode: string;
   role: string;
+  managerId?: string | null;
 }
 
 export async function createEmployee(input: CreateEmployeeInput): Promise<AdminEmployee> {
   const { data, error } = await client().functions.invoke("create-employee", {
-    body: { fullName: input.fullName, email: input.email, employeeCode: input.employeeCode, role: input.role },
+    body: {
+      fullName: input.fullName,
+      email: input.email,
+      employeeCode: input.employeeCode,
+      role: input.role,
+      managerId: input.managerId || null,
+    },
   });
   if (error) {
     const context = (error as { context?: Response }).context;
@@ -37,6 +44,21 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
   }
   if (data?.error) throw new Error(data.error);
   return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role };
+}
+
+export interface AdminManagerOption {
+  id: string;
+  fullName: string;
+}
+
+export async function listManagers(): Promise<AdminManagerOption[]> {
+  const { data, error } = await client()
+    .from("profiles")
+    .select("id,full_name")
+    .in("role", ["manager", "hr_admin"])
+    .order("full_name");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }));
 }
 
 export interface AdminLeaveRequest {
