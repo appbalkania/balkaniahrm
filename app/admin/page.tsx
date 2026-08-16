@@ -327,9 +327,9 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
           <h2>Add employee</h2>
           <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>
@@ -357,7 +357,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </select>
           </label>
           {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
-          <div className="modal-actions">
+          <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
             <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Sending invite…" : "Send invite"}</button>
           </div>
