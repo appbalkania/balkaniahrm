@@ -146,6 +146,57 @@ export async function listAttendanceDevices() {
   return data ?? [];
 }
 
+export type DisciplinarySeverity = "verbal_warning" | "written_warning" | "final_warning" | "suspension" | "termination_notice";
+
+export interface AdminDisciplinaryAction {
+  id: string;
+  employeeName: string;
+  employeeCode: string;
+  severity: DisciplinarySeverity;
+  reason: string;
+  details: string | null;
+  occurredOn: string;
+}
+
+export async function listDisciplinaryActions(): Promise<AdminDisciplinaryAction[]> {
+  const { data, error } = await client()
+    .from("disciplinary_actions")
+    .select("id,severity,reason,details,occurred_on,profiles!disciplinary_actions_employee_id_fkey(full_name,employee_code)")
+    .order("occurred_on", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      id: row.id,
+      employeeName: profile?.full_name ?? "Unknown",
+      employeeCode: profile?.employee_code ?? "",
+      severity: row.severity,
+      reason: row.reason,
+      details: row.details,
+      occurredOn: row.occurred_on,
+    };
+  });
+}
+
+export interface IssueDisciplinaryInput {
+  employeeId: string;
+  severity: DisciplinarySeverity;
+  reason: string;
+  details?: string;
+  occurredOn: string;
+}
+
+export async function issueDisciplinaryAction(input: IssueDisciplinaryInput): Promise<void> {
+  const { error } = await client().rpc("issue_disciplinary_action", {
+    p_employee_id: input.employeeId,
+    p_severity: input.severity,
+    p_reason: input.reason,
+    p_details: input.details || null,
+    p_occurred_on: input.occurredOn,
+  });
+  if (error) throw error;
+}
+
 export interface DashboardStats {
   totalEmployees: number;
   workingNow: number;
