@@ -27,6 +27,10 @@ const paths: Record<string, string> = {
   mail: "M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm0 0 8 7 8-7",
   lock: "M6 11V8a6 6 0 1 1 12 0v3m-13 0h14v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9Z",
   building: "M4 21V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v16M4 21h16M9 8h.01M9 12h.01M9 16h.01M13 8h.01M13 12h.01M13 16h.01M16 21v-6h4v6",
+  graduationCap: "M2 8 12 3l10 5-10 5L2 8Zm4 3v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5",
+  userPlus: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 10a6 6 0 0 1 9-5.2M17 15v6m3-3h-6",
+  chart: "M4 20V10M10 20V4M16 20v-7M4 20h16",
+  creditCard: "M3 7a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Zm0 4h18M7 15h4",
 };
 
 export function Icon({ name, size = 20, className, strokeWidth = 1.8 }: { name: keyof typeof paths; size?: number; className?: string; strokeWidth?: number }) {
