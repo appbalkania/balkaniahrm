@@ -1,0 +1,130 @@
+import type {
+  AttendanceEventRecord,
+  AttendanceSession,
+  LeaveBalance,
+  LeaveRequestInput,
+  LeaveRequestRecord,
+  Profile,
+} from "./domain";
+import { createSupabaseBrowserClient } from "./supabase";
+
+function client() {
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+  return supabase;
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export async function getMyProfile(): Promise<Profile | null> {
+  const { data: auth } = await client().auth.getUser();
+  if (!auth.user) return null;
+  const { data, error } = await client()
+    .from("profiles")
+    .select("id,full_name,employee_code,role")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: data.id, fullName: data.full_name, employeeCode: data.employee_code, role: data.role };
+}
+
+export async function getTodaySession(): Promise<AttendanceSession | null> {
+  const { data, error } = await client()
+    .from("attendance_sessions")
+    .select("*")
+    .eq("work_date", todayIso())
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    employeeId: data.employee_id,
+    workDate: data.work_date,
+    state: data.state,
+    clockedInAt: data.clocked_in_at ?? undefined,
+    clockedOutAt: data.clocked_out_at ?? undefined,
+    firstBreakStartedAt: data.first_break_started_at ?? undefined,
+    firstBreakEndedAt: data.first_break_ended_at ?? undefined,
+    lunchStartedAt: data.lunch_started_at ?? undefined,
+    lunchEndedAt: data.lunch_ended_at ?? undefined,
+  };
+}
+
+export async function getTodayEvents(): Promise<AttendanceEventRecord[]> {
+  const { data, error } = await client()
+    .from("attendance_events")
+    .select("event_type,occurred_at")
+    .gte("occurred_at", `${todayIso()}T00:00:00`)
+    .order("occurred_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ eventType: row.event_type, occurredAt: row.occurred_at }));
+}
+
+export async function getLeaveBalances(): Promise<LeaveBalance[]> {
+  const { data, error } = await client().from("leave_balances").select("leave_type,entitlement,earned,used");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ leaveType: row.leave_type, entitlement: Number(row.entitlement), earned: Number(row.earned), used: Number(row.used) }));
+}
+
+export async function getLeaveRequests(): Promise<LeaveRequestRecord[]> {
+  const { data, error } = await client()
+    .from("leave_requests")
+    .select("id,leave_type,starts_on,ends_on,status,note,created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    leaveType: row.leave_type,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    status: row.status,
+    note: row.note,
+    createdAt: row.created_at,
+  }));
+}
+
+export interface MonthSessionSummary {
+  workDate: string;
+  state: string;
+  clockedInAt: string | null;
+  clockedOutAt: string | null;
+}
+
+export async function getMonthSessions(monthStart: string, monthEnd: string): Promise<MonthSessionSummary[]> {
+  const { data, error } = await client()
+    .from("attendance_sessions")
+    .select("work_date,state,clocked_in_at,clocked_out_at")
+    .gte("work_date", monthStart)
+    .lte("work_date", monthEnd)
+    .order("work_date");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ workDate: row.work_date, state: row.state, clockedInAt: row.clocked_in_at, clockedOutAt: row.clocked_out_at }));
+}
+
+export async function submitLeaveRequest(input: LeaveRequestInput): Promise<LeaveRequestRecord> {
+  const { data: auth } = await client().auth.getUser();
+  if (!auth.user) throw new Error("Authentication required.");
+  const { data, error } = await client()
+    .from("leave_requests")
+    .insert({
+      employee_id: auth.user.id,
+      leave_type: input.leaveType,
+      starts_on: input.startsOn,
+      ends_on: input.endsOn,
+      note: input.note ?? null,
+    })
+    .select("id,leave_type,starts_on,ends_on,status,note,created_at")
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    leaveType: data.leave_type,
+    startsOn: data.starts_on,
+    endsOn: data.ends_on,
+    status: data.status,
+    note: data.note,
+    createdAt: data.created_at,
+  };
+}
