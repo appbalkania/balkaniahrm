@@ -10,22 +10,26 @@ import type { Profile } from "../../lib/domain";
 import {
   createEmployee,
   getDashboardStats,
+  issueDisciplinaryAction,
   listAttendanceDevices,
   listAttendanceSessions,
+  listDisciplinaryActions,
   listEmployees,
   listManagers,
   listPendingLeaveRequests,
   listWorkSchedules,
   reviewLeaveRequest,
   type AdminAttendanceSession,
+  type AdminDisciplinaryAction,
   type AdminEmployee,
   type AdminLeaveRequest,
   type AdminManagerOption,
   type AdminWorkSchedule,
   type DashboardStats,
+  type DisciplinarySeverity,
 } from "../../lib/admin-service";
 
-type Module = "dashboard" | "employees" | "attendance" | "leaves" | "schedules" | "devices" | "settings";
+type Module = "dashboard" | "employees" | "attendance" | "leaves" | "disciplinary" | "schedules" | "devices" | "settings";
 type AuthStatus = "loading" | "signedOut" | "forbidden" | "signedIn";
 
 const modules: Array<[Module, string, Parameters<typeof Icon>[0]["name"]]> = [
@@ -33,6 +37,7 @@ const modules: Array<[Module, string, Parameters<typeof Icon>[0]["name"]]> = [
   ["employees", "Employees", "users"],
   ["attendance", "Attendance", "clock"],
   ["leaves", "Leave management", "calendar"],
+  ["disciplinary", "Disciplinary", "warning"],
   ["schedules", "Work schedules", "swap"],
   ["devices", "Kiosk devices", "device"],
   ["settings", "Settings", "settings"],
@@ -151,7 +156,7 @@ function AdminLogin({ configured }: { configured: boolean }) {
   );
 }
 
-const MANAGER_MODULES: Module[] = ["attendance", "leaves"];
+const MANAGER_MODULES: Module[] = ["attendance", "leaves", "disciplinary"];
 
 function AdminShell({ profile }: { profile: Profile }) {
   const visibleModules = profile.role === "manager" ? modules.filter(([id]) => MANAGER_MODULES.includes(id)) : modules;
@@ -200,6 +205,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "employees" && <Employees setNotice={setNotice} />}
         {module === "attendance" && <Attendance setNotice={setNotice} />}
         {module === "leaves" && <Leaves setNotice={setNotice} />}
+        {module === "disciplinary" && <Disciplinary setNotice={setNotice} />}
         {module === "schedules" && <Schedules setNotice={setNotice} />}
         {module === "devices" && <Devices setNotice={setNotice} />}
         {module === "settings" && <Settings setNotice={setNotice} />}
@@ -544,6 +550,156 @@ function Leaves({ setNotice }: NoticeProps) {
         </section>
       )}
     </>
+  );
+}
+
+const severityLabels: Record<DisciplinarySeverity, string> = {
+  verbal_warning: "Verbal warning",
+  written_warning: "Written warning",
+  final_warning: "Final warning",
+  suspension: "Suspension",
+  termination_notice: "Termination notice",
+};
+
+const severityPillClass: Record<DisciplinarySeverity, string> = {
+  verbal_warning: "",
+  written_warning: "pending",
+  final_warning: "danger",
+  suspension: "danger",
+  termination_notice: "danger",
+};
+
+function Disciplinary({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminDisciplinaryAction[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  function load() {
+    listDisciplinaryActions()
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load disciplinary actions."));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <>
+      <Toolbar action="Issue action" onAction={() => setShowModal(true)} />
+      {showModal && (
+        <IssueDisciplinaryModal
+          onClose={() => setShowModal(false)}
+          onIssued={() => {
+            setShowModal(false);
+            setNotice("Disciplinary action recorded.");
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="warning" title="No disciplinary actions" note="Actions you issue to employees will appear here." />
+      ) : (
+        <section className="panel">
+          <div className="table-head"><b>Employee</b><b>Severity</b><b>Reason</b><b>Date</b></div>
+          {rows.map((row) => (
+            <div className="table-row" key={row.id}>
+              <span><i className="person-dot">{row.employeeName[0]}</i>{row.employeeName}</span>
+              <span><span className={`pill ${severityPillClass[row.severity]}`}>{severityLabels[row.severity]}</span></span>
+              <span>{row.reason}</span>
+              <span>{formatDate(row.occurredOn)}</span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function IssueDisciplinaryModal({ onClose, onIssued }: { onClose: () => void; onIssued: () => void }) {
+  const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [severity, setSeverity] = useState<DisciplinarySeverity>("verbal_warning");
+  const [reason, setReason] = useState("");
+  const [details, setDetails] = useState("");
+  const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listEmployees()
+      .then(setEmployees)
+      .catch(() => setEmployees([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!employeeId) {
+      setError("Choose an employee.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await issueDisciplinaryAction({ employeeId, severity, reason, details, occurredOn });
+      onIssued();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't record the action.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Issue disciplinary action</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Only visible to HR and the employee's manager.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Employee
+            <select required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={saving}>
+              <option value="">Select an employee</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.fullName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Severity
+            <select value={severity} onChange={(e) => setSeverity(e.target.value as DisciplinarySeverity)} disabled={saving}>
+              {Object.entries(severityLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Date
+            <input type="date" required value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Reason
+            <input required value={reason} onChange={(e) => setReason(e.target.value)} disabled={saving} placeholder="e.g. Repeated late arrival" />
+          </label>
+          <label>
+            Details (optional)
+            <textarea value={details} onChange={(e) => setDetails(e.target.value)} disabled={saving} rows={3} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Issue action"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
