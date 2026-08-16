@@ -9,6 +9,7 @@ import { downloadCsv } from "../../lib/csv";
 import type { Profile } from "../../lib/domain";
 import {
   createEmployee,
+  createTeam,
   getDashboardStats,
   issueDisciplinaryAction,
   listAttendanceDevices,
@@ -17,6 +18,7 @@ import {
   listEmployees,
   listManagers,
   listPendingLeaveRequests,
+  listTeams,
   listWorkSchedules,
   reviewLeaveRequest,
   type AdminAttendanceSession,
@@ -24,6 +26,7 @@ import {
   type AdminEmployee,
   type AdminLeaveRequest,
   type AdminManagerOption,
+  type AdminTeam,
   type AdminWorkSchedule,
   type DashboardStats,
   type DisciplinarySeverity,
@@ -33,6 +36,7 @@ type Module =
   | "dashboard"
   | "organization"
   | "employees"
+  | "teams"
   | "documents"
   | "training"
   | "recruitment"
@@ -56,7 +60,8 @@ const moduleGroups: Array<{ label: string; items: ModuleEntry[] }> = [
     label: "COMPANY",
     items: [
       ["organization", "Organization", "building"],
-      ["employees", "Staff Directory", "users"],
+      ["employees", "Staff Directory", "user"],
+      ["teams", "Teams", "users"],
       ["documents", "Documents", "archive"],
       ["training", "Training & Certifications", "graduationCap"],
     ],
@@ -264,6 +269,7 @@ function AdminShell({ profile }: { profile: Profile }) {
           <EmptyPanel icon="building" title="Organization" note="Company structure, branches, and departments will live here." />
         )}
         {module === "employees" && <Employees setNotice={setNotice} />}
+        {module === "teams" && <Teams setNotice={setNotice} />}
         {module === "documents" && (
           <EmptyPanel icon="archive" title="Documents" note="Employee and company document storage is coming in a later release." />
         )}
@@ -371,8 +377,8 @@ function Employees({ setNotice }: NoticeProps) {
     try {
       downloadCsv(
         `employees-${new Date().toISOString().slice(0, 10)}.csv`,
-        ["Full name", "Employee code", "Role"],
-        rows.map((row) => [row.fullName, row.employeeCode, row.role]),
+        ["Full name", "Employee code", "Role", "Team"],
+        rows.map((row) => [row.fullName, row.employeeCode, row.role, row.teamName ?? ""]),
       );
     } finally {
       setExporting(false);
@@ -387,7 +393,7 @@ function Employees({ setNotice }: NoticeProps) {
           onClose={() => setShowAddModal(false)}
           onCreated={(employee) => {
             setShowAddModal(false);
-            setRows((prev) => [...(prev ?? []), employee].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+            load();
             setNotice(`Invited ${employee.fullName}. They'll receive an email to set their password.`);
           }}
         />
@@ -400,13 +406,13 @@ function Employees({ setNotice }: NoticeProps) {
         <EmptyPanel icon="users" title="No employees yet" note="Add or import employees to see them here." />
       ) : (
         <section className="panel">
-          <div className="table-head"><b>Employee</b><b>Code</b><b>Role</b><b>Status</b></div>
+          <div className="table-head"><b>Employee</b><b>Code</b><b>Role</b><b>Team</b></div>
           {rows.map((row) => (
             <div className="table-row" key={row.id}>
               <span><i className="person-dot">{row.fullName[0]}</i>{row.fullName}</span>
               <span>{row.employeeCode}</span>
               <span className="capitalize">{row.role.replace("_", " ")}</span>
-              <span className="pill success">Active</span>
+              <span>{row.teamName ?? "—"}</span>
             </div>
           ))}
         </section>
@@ -420,23 +426,29 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [email, setEmail] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
   const [role, setRole] = useState("employee");
-  const [managerId, setManagerId] = useState("");
-  const [managers, setManagers] = useState<AdminManagerOption[]>([]);
+  const [teamId, setTeamId] = useState("");
+  const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    listManagers()
-      .then(setManagers)
-      .catch(() => setManagers([]));
+    listTeams()
+      .then(setTeams)
+      .catch(() => setTeams([]));
   }, []);
+
+  const teamRequired = role !== "kiosk";
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (teamRequired && !teamId) {
+      setError("Choose a team.");
+      return;
+    }
     setError(null);
     setSaving(true);
     try {
-      const employee = await createEmployee({ fullName, email, employeeCode, role, managerId: managerId || null });
+      const employee = await createEmployee({ fullName, email, employeeCode, role, teamId: teamId || null });
       onCreated(employee);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create the employee.");
@@ -475,10 +487,132 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <option value="kiosk">Kiosk</option>
             </select>
           </label>
+          {teamRequired && (
+            <label>
+              Team
+              <select required value={teamId} onChange={(e) => setTeamId(e.target.value)} disabled={saving}>
+                <option value="">Select a team</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Sending invite…" : "Send invite"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function Teams({ setNotice }: NoticeProps) {
+  const [teams, setTeams] = useState<AdminTeam[] | null>(null);
+  const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  function load() {
+    Promise.all([listTeams(), listEmployees()])
+      .then(([teamRows, employeeRows]) => {
+        setTeams(teamRows);
+        setEmployees(employeeRows);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load teams."));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const memberCounts = employees.reduce<Record<string, number>>((acc, e) => {
+    if (e.teamId) acc[e.teamId] = (acc[e.teamId] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <>
+      <Toolbar action="Create team" onAction={() => setShowModal(true)} />
+      {showModal && (
+        <CreateTeamModal
+          onClose={() => setShowModal(false)}
+          onCreated={(team) => {
+            setShowModal(false);
+            setNotice(`Team "${team.name}" created.`);
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !teams ? (
+        <LoadingPanel />
+      ) : teams.length === 0 ? (
+        <EmptyPanel icon="users" title="No teams yet" note="Create a team and assign a manager so employees can be added to it." />
+      ) : (
+        <section className="panel">
+          <div className="table-head"><b>Team</b><b>Manager</b><b>Members</b><b>Status</b></div>
+          {teams.map((team) => (
+            <div className="table-row" key={team.id}>
+              <span>{team.name}</span>
+              <span>{team.managerName ?? "Unassigned"}</span>
+              <span>{memberCounts[team.id] ?? 0}</span>
+              <span className={`pill ${team.managerId ? "success" : "pending"}`}>{team.managerId ? "Managed" : "No manager"}</span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: (team: AdminTeam) => void }) {
+  const [name, setName] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [managers, setManagers] = useState<AdminManagerOption[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listManagers()
+      .then(setManagers)
+      .catch(() => setManagers([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const team = await createTeam({ name, managerId: managerId || null });
+      onCreated(team);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create the team.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Create team</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Employees assigned to this team are managed by whoever you pick here.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
           <label>
-            Reports to (manager)
+            Team name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Manager
             <select value={managerId} onChange={(e) => setManagerId(e.target.value)} disabled={saving}>
-              <option value="">No manager</option>
+              <option value="">Assign later</option>
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>{m.fullName}</option>
               ))}
@@ -487,7 +621,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
           {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
-            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Sending invite…" : "Send invite"}</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Creating…" : "Create team"}</button>
           </div>
         </form>
       </div>
