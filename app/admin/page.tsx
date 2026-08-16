@@ -7,6 +7,7 @@ import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supa
 import { getMyProfile } from "../../lib/employee-service";
 import type { Profile } from "../../lib/domain";
 import {
+  createEmployee,
   getDashboardStats,
   listAttendanceDevices,
   listAttendanceSessions,
@@ -255,20 +256,31 @@ function Dashboard({ onNavigate }: { onNavigate: (module: Module) => void }) {
 function Employees({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminEmployee[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  function load() {
+    listEmployees()
+      .then((data) => setRows(data))
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load employees."));
+  }
 
   useEffect(() => {
-    let active = true;
-    listEmployees()
-      .then((data) => active && setRows(data))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Couldn't load employees."));
-    return () => {
-      active = false;
-    };
+    load();
   }, []);
 
   return (
     <>
-      <Toolbar action="Add employee" onAction={() => setNotice("Employee creation will open a form connected to Supabase profiles + auth invite.")} />
+      <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} />
+      {showAddModal && (
+        <AddEmployeeModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={(employee) => {
+            setShowAddModal(false);
+            setRows((prev) => [...(prev ?? []), employee].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+            setNotice(`Invited ${employee.fullName}. They'll receive an email to set their password.`);
+          }}
+        />
+      )}
       {error ? (
         <ErrorState message={error} />
       ) : !rows ? (
@@ -289,6 +301,69 @@ function Employees({ setNotice }: NoticeProps) {
         </section>
       )}
     </>
+  );
+}
+
+function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreated: (employee: AdminEmployee) => void }) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
+  const [role, setRole] = useState("employee");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const employee = await createEmployee({ fullName, email, employeeCode, role });
+      onCreated(employee);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create the employee.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Add employee</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Creates a profile and sends a Supabase auth invite email so they can set their password.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Full name
+            <input required value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Work email
+            <input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Employee code
+            <input required value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Role
+            <select value={role} onChange={(e) => setRole(e.target.value)} disabled={saving}>
+              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="hr_admin">HR admin</option>
+              <option value="kiosk">Kiosk</option>
+            </select>
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Sending invite…" : "Send invite"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
