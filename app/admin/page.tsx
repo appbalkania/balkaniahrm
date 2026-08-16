@@ -123,7 +123,7 @@ function AdminLogin({ configured }: { configured: boolean }) {
 
   return (
     <main className="admin-auth-screen">
-      <div className="admin-brand"><span>B</span><b>Balkania</b></div>
+      <div className="admin-brand"><img src="/icon.svg" alt="" /><b>Balkania</b></div>
       <h1>Admin sign-in</h1>
       <p className="muted">Restricted to managers and HR administrators.</p>
       {!configured && (
@@ -160,7 +160,7 @@ function AdminShell({ profile }: { profile: Profile }) {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span>B</span><b>Balkania</b></div>
+        <div className="admin-brand"><img src="/icon.svg" alt="" /><b>Balkania</b></div>
         <p>HR ADMIN</p>
         {modules.map(([id, label, icon]) => (
           <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>
@@ -170,6 +170,9 @@ function AdminShell({ profile }: { profile: Profile }) {
         ))}
         <div className="sidebar-footer">
           <span>Signed in as {profile.fullName}</span>
+          <a className="sidebar-signout" href="/?view=employee">
+            <Icon name="qr" size={15} /> Check-in view
+          </a>
           <button className="sidebar-signout" onClick={() => signOut()}>
             <Icon name="logout" size={15} /> Sign out
           </button>
