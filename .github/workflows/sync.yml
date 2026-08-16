@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: master
           fetch-depth: 0
 
       - name: Add upstream remote
@@ -33,9 +33,9 @@ jobs:
 
       - name: Sync changes
         run: |
-          git checkout -B main origin/main
-          git merge upstream/main --no-edit
+          git checkout -B master origin/master
+          git merge upstream/master --no-edit
 
       - name: Push changes
         run: |
-          git push origin main
+          git push origin master
