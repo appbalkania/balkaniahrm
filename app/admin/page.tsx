@@ -29,19 +29,67 @@ import {
   type DisciplinarySeverity,
 } from "../../lib/admin-service";
 
-type Module = "dashboard" | "employees" | "attendance" | "leaves" | "disciplinary" | "schedules" | "devices" | "settings";
+type Module =
+  | "dashboard"
+  | "organization"
+  | "employees"
+  | "documents"
+  | "training"
+  | "recruitment"
+  | "leaves"
+  | "disciplinary"
+  | "performance"
+  | "payroll"
+  | "attendance"
+  | "schedules"
+  | "devices"
+  | "assets"
+  | "settings"
+  | "integrations";
 type AuthStatus = "loading" | "signedOut" | "forbidden" | "signedIn";
 
-const modules: Array<[Module, string, Parameters<typeof Icon>[0]["name"]]> = [
-  ["dashboard", "Dashboard", "layout"],
-  ["employees", "Employees", "users"],
-  ["attendance", "Attendance", "clock"],
-  ["leaves", "Leave management", "calendar"],
-  ["disciplinary", "Disciplinary", "warning"],
-  ["schedules", "Work schedules", "swap"],
-  ["devices", "Kiosk devices", "device"],
-  ["settings", "Settings", "settings"],
+type ModuleEntry = [Module, string, Parameters<typeof Icon>[0]["name"]];
+
+const moduleGroups: Array<{ label: string; items: ModuleEntry[] }> = [
+  { label: "MAIN", items: [["dashboard", "Dashboard", "layout"]] },
+  {
+    label: "COMPANY",
+    items: [
+      ["organization", "Organization", "building"],
+      ["employees", "Staff Directory", "users"],
+      ["documents", "Documents", "archive"],
+      ["training", "Training & Certifications", "graduationCap"],
+    ],
+  },
+  {
+    label: "EMPLOYEES",
+    items: [
+      ["recruitment", "Recruitment", "userPlus"],
+      ["leaves", "Leave management", "calendar"],
+      ["disciplinary", "Disciplinary", "warning"],
+      ["performance", "Performance Review", "chart"],
+      ["payroll", "Payroll", "creditCard"],
+    ],
+  },
+  {
+    label: "OPERATIONS",
+    items: [
+      ["attendance", "Attendance", "clock"],
+      ["schedules", "Work schedules", "swap"],
+      ["devices", "Kiosk devices", "device"],
+      ["assets", "Asset Management", "briefcase"],
+    ],
+  },
+  {
+    label: "ACCOUNT",
+    items: [
+      ["settings", "Settings", "settings"],
+      ["integrations", "Integrations", "swap"],
+    ],
+  },
 ];
+
+const modules: ModuleEntry[] = moduleGroups.flatMap((group) => group.items);
 
 export default function AdminPage() {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -159,8 +207,14 @@ function AdminLogin({ configured }: { configured: boolean }) {
 const MANAGER_MODULES: Module[] = ["attendance", "leaves", "disciplinary"];
 
 function AdminShell({ profile }: { profile: Profile }) {
-  const visibleModules = profile.role === "manager" ? modules.filter(([id]) => MANAGER_MODULES.includes(id)) : modules;
-  const [module, setModule] = useState<Module>(visibleModules[0][0]);
+  const isManager = profile.role === "manager";
+  const visibleGroups = moduleGroups
+    .map((group) => ({
+      label: group.label,
+      items: isManager ? group.items.filter(([id]) => MANAGER_MODULES.includes(id)) : group.items,
+    }))
+    .filter((group) => group.items.length > 0);
+  const [module, setModule] = useState<Module>(visibleGroups[0].items[0][0]);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -173,12 +227,16 @@ function AdminShell({ profile }: { profile: Profile }) {
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
-        <p>HR ADMIN</p>
-        {visibleModules.map(([id, label, icon]) => (
-          <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>
-            <Icon name={icon} size={17} />
-            {label}
-          </button>
+        {visibleGroups.map((group) => (
+          <div className="sidebar-group" key={group.label}>
+            <p>{group.label}</p>
+            {group.items.map(([id, label, icon]) => (
+              <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>
+                <Icon name={icon} size={17} />
+                {label}
+              </button>
+            ))}
+          </div>
         ))}
         <div className="sidebar-footer">
           <span>Signed in as {profile.fullName}</span>
@@ -202,13 +260,37 @@ function AdminShell({ profile }: { profile: Profile }) {
         </header>
         {notice && <p className="admin-notice">{notice}</p>}
         {module === "dashboard" && <Dashboard onNavigate={setModule} />}
+        {module === "organization" && (
+          <EmptyPanel icon="building" title="Organization" note="Company structure, branches, and departments will live here." />
+        )}
         {module === "employees" && <Employees setNotice={setNotice} />}
+        {module === "documents" && (
+          <EmptyPanel icon="archive" title="Documents" note="Employee and company document storage is coming in a later release." />
+        )}
+        {module === "training" && (
+          <EmptyPanel icon="graduationCap" title="Training & Certifications" note="Course tracking and certification renewals are coming in a later release." />
+        )}
+        {module === "recruitment" && (
+          <EmptyPanel icon="userPlus" title="Recruitment" note="Job postings and candidate pipelines are coming in a later release." />
+        )}
         {module === "attendance" && <Attendance setNotice={setNotice} />}
         {module === "leaves" && <Leaves setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} />}
+        {module === "performance" && (
+          <EmptyPanel icon="chart" title="Performance Review" note="Goals, reviews, and feedback cycles are coming in a later release." />
+        )}
+        {module === "payroll" && (
+          <EmptyPanel icon="creditCard" title="Payroll" note="Payroll runs and payslips are coming in a later release." />
+        )}
         {module === "schedules" && <Schedules setNotice={setNotice} />}
         {module === "devices" && <Devices setNotice={setNotice} />}
+        {module === "assets" && (
+          <EmptyPanel icon="briefcase" title="Asset Management" note="Equipment and asset assignments are coming in a later release." />
+        )}
         {module === "settings" && <Settings setNotice={setNotice} />}
+        {module === "integrations" && (
+          <EmptyPanel icon="swap" title="Integrations" note="Connect third-party tools once this module is built." />
+        )}
       </section>
     </main>
   );

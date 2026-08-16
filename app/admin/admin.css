@@ -39,7 +39,8 @@
 .admin-sidebar { padding: 26px 16px; background: linear-gradient(180deg, var(--navy), var(--navy-dark)); color: #dce8ff; display: flex; flex-direction: column; }
 .admin-brand { display: flex; align-items: center; gap: 9px; font-size: 19px; color: #fff; font-weight: 700; }
 .admin-brand img { display: block; width: 30px; height: 30px; border-radius: 9px; }
-.admin-sidebar > p { margin: 32px 12px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: #7f9bdf; }
+.sidebar-group p { margin: 24px 12px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: #7f9bdf; }
+.sidebar-group:first-child p { margin-top: 18px; }
 .admin-sidebar button { width: 100%; display: flex; gap: 11px; align-items: center; padding: 11px 12px; border: 0; border-radius: 10px; background: transparent; color: #c3d2f2; text-align: left; font-size: 13.5px; font-weight: 500; }
 .admin-sidebar button:hover { background: rgba(255, 255, 255, 0.06); }
 .admin-sidebar button.active { background: var(--coral); color: #fff; }
