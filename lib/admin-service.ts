@@ -16,7 +16,10 @@ export interface AdminEmployee {
 }
 
 export async function listEmployees(): Promise<AdminEmployee[]> {
-  const { data, error } = await client().from("profiles").select("id,full_name,employee_code,role,team_id,teams(name)").order("full_name");
+  const { data, error } = await client()
+    .from("profiles")
+    .select("id,full_name,employee_code,role,team_id,teams!profiles_team_id_fkey(name)")
+    .order("full_name");
   if (error) throw error;
   return (data ?? []).map((row) => {
     const team = Array.isArray(row.teams) ? row.teams[0] : row.teams;
