@@ -123,7 +123,7 @@ function AdminLogin({ configured }: { configured: boolean }) {
 
   return (
     <main className="admin-auth-screen">
-      <div className="admin-brand"><img src="/icon.svg" alt="" /><b>Balkania</b></div>
+      <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
       <h1>Admin sign-in</h1>
       <p className="muted">Restricted to managers and HR administrators.</p>
       {!configured && (
@@ -160,7 +160,7 @@ function AdminShell({ profile }: { profile: Profile }) {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><img src="/icon.svg" alt="" /><b>Balkania</b></div>
+        <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
         <p>HR ADMIN</p>
         {modules.map(([id, label, icon]) => (
           <button key={id} className={module === id ? "active" : ""} onClick={() => setModule(id)}>

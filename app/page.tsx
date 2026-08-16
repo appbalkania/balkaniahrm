@@ -130,7 +130,7 @@ export default function Home() {
 function SplashScreen() {
   return (
     <main className="shell centered">
-      <img src="/icon.svg" alt="" className="brand-mark large" />
+      <img src="/icon.png" alt="" className="brand-mark large" />
       <Icon name="spinner" size={22} className="spin muted-icon" />
     </main>
   );
@@ -171,7 +171,7 @@ function LoginScreen({ configured }: { configured: boolean }) {
 
   return (
     <main className="shell centered login">
-      <img src="/icon.svg" alt="" className="brand-mark large" />
+      <img src="/icon.png" alt="" className="brand-mark large" />
       <h1>Balkania</h1>
       <p className="muted center">Sign in to check in, view your schedule, and manage leave.</p>
 
@@ -278,7 +278,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     <main className="shell">
       <header className="topbar">
         <div className="brand-row">
-          <img src="/icon.svg" alt="" className="brand-mark" />
+          <img src="/icon.png" alt="" className="brand-mark" />
           <strong>Balkania</strong>
         </div>
         <button className="icon-button" onClick={() => setScreen("profile")} aria-label="Open profile">
