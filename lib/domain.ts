@@ -34,3 +34,34 @@ export interface LeaveRequestInput {
   note?: string;
   isHalfDay?: boolean;
 }
+
+export type EmployeeRole = "employee" | "manager" | "hr_admin" | "kiosk";
+
+export interface Profile {
+  id: string;
+  fullName: string;
+  employeeCode: string;
+  role: EmployeeRole;
+}
+
+export interface LeaveBalance {
+  leaveType: string;
+  entitlement: number;
+  earned: number;
+  used: number;
+}
+
+export interface LeaveRequestRecord {
+  id: string;
+  leaveType: string;
+  startsOn: string;
+  endsOn: string;
+  status: LeaveStatus;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AttendanceEventRecord {
+  eventType: AttendanceEventType;
+  occurredAt: string;
+}
