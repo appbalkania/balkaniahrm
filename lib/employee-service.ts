@@ -4,6 +4,7 @@ import type {
   LeaveBalance,
   LeaveRequestInput,
   LeaveRequestRecord,
+  OnLeaveEntry,
   Profile,
 } from "./domain";
 import { createSupabaseBrowserClient } from "./supabase";
@@ -82,6 +83,15 @@ export async function getLeaveRequests(): Promise<LeaveRequestRecord[]> {
     status: row.status,
     note: row.note,
     createdAt: row.created_at,
+  }));
+}
+
+export async function getWhoIsOnLeaveToday(): Promise<OnLeaveEntry[]> {
+  const { data, error } = await client().rpc("who_is_on_leave_today");
+  if (error) throw error;
+  return (data ?? []).map((row: { employee_name: string; leave_type: string }) => ({
+    employeeName: row.employee_name,
+    leaveType: row.leave_type,
   }));
 }
 
