@@ -199,6 +199,49 @@ export async function reviewLeaveRequest(id: string, status: "approved" | "rejec
   return data;
 }
 
+export interface AdminLeaveBalance {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  leaveType: string;
+  entitlement: number;
+  earned: number;
+  used: number;
+}
+
+export async function listLeaveBalances(): Promise<AdminLeaveBalance[]> {
+  const { data, error } = await client()
+    .from("leave_balances")
+    .select("id,employee_id,leave_type,entitlement,earned,used,profiles!leave_balances_employee_id_fkey(full_name)")
+    .order("leave_type");
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      id: row.id,
+      employeeId: row.employee_id,
+      employeeName: profile?.full_name ?? "Unknown",
+      leaveType: row.leave_type,
+      entitlement: Number(row.entitlement),
+      earned: Number(row.earned),
+      used: Number(row.used),
+    };
+  });
+}
+
+export interface SetLeaveEntitlementInput {
+  employeeId: string;
+  leaveType: string;
+  entitlement: number;
+}
+
+export async function setLeaveEntitlement(input: SetLeaveEntitlementInput): Promise<void> {
+  const { error } = await client()
+    .from("leave_balances")
+    .upsert({ employee_id: input.employeeId, leave_type: input.leaveType, entitlement: input.entitlement }, { onConflict: "employee_id,leave_type" });
+  if (error) throw error;
+}
+
 export interface AdminAttendanceSession {
   id: string;
   state: string;
