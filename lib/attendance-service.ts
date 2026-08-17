@@ -22,6 +22,7 @@ export async function recordAttendance(input: AttendanceEventInput): Promise<Att
     p_source: input.source,
     p_work_mode: input.workMode ?? null,
     p_location: input.latitude == null ? null : { latitude: input.latitude, longitude: input.longitude },
+    p_employee_id: input.employeeId ?? null,
   });
   if (error) throw error;
   const row = data as AttendanceSessionRow;
