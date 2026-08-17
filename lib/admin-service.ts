@@ -210,23 +210,25 @@ export interface AdminLeaveBalance {
 }
 
 export async function listLeaveBalances(): Promise<AdminLeaveBalance[]> {
-  const { data, error } = await client()
-    .from("leave_balances")
-    .select("id,employee_id,leave_type,entitlement,earned,used,profiles!leave_balances_employee_id_fkey(full_name)")
-    .order("leave_type");
+  // leave_balances_current is a view that computes "earned" live from monthly
+  // accrual and is already scoped to the active Irish leave year (Apr-Mar) —
+  // see 20260825_leave_year_accrual.sql. It has no foreign key of its own for
+  // PostgREST to embed profiles through, so employee names are joined here.
+  const [{ data, error }, employees] = await Promise.all([
+    client().from("leave_balances_current").select("id,employee_id,leave_type,entitlement,earned,used").order("leave_type"),
+    listEmployees(),
+  ]);
   if (error) throw error;
-  return (data ?? []).map((row) => {
-    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-    return {
-      id: row.id,
-      employeeId: row.employee_id,
-      employeeName: profile?.full_name ?? "Unknown",
-      leaveType: row.leave_type,
-      entitlement: Number(row.entitlement),
-      earned: Number(row.earned),
-      used: Number(row.used),
-    };
-  });
+  const nameById = new Map(employees.map((e) => [e.id, e.fullName]));
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    employeeId: row.employee_id,
+    employeeName: nameById.get(row.employee_id) ?? "Unknown",
+    leaveType: row.leave_type,
+    entitlement: Number(row.entitlement),
+    earned: Number(row.earned),
+    used: Number(row.used),
+  }));
 }
 
 export interface SetLeaveEntitlementInput {
@@ -236,15 +238,17 @@ export interface SetLeaveEntitlementInput {
 }
 
 export async function setLeaveEntitlement(input: SetLeaveEntitlementInput): Promise<void> {
-  // There's no accrual engine in this app yet, so entitlement is granted in full
-  // immediately — "earned" tracks it 1:1 rather than sitting at 0 until something
-  // else increments it. "used" is deliberately left out of the payload so an
-  // existing balance's usage isn't reset when HR updates the entitlement.
+  // "earned" is no longer a stored column — it's computed live from entitlement
+  // by leave_balances_current. Omitting leave_year_start lets its column default
+  // (current_leave_year_start()) target this year's row, so this always creates
+  // or updates the *current* leave year's entitlement, never a past year's.
+  // "used" is deliberately left out so an existing balance's usage isn't reset
+  // when HR updates the entitlement mid-year.
   const { error } = await client()
     .from("leave_balances")
     .upsert(
-      { employee_id: input.employeeId, leave_type: input.leaveType, entitlement: input.entitlement, earned: input.entitlement },
-      { onConflict: "employee_id,leave_type" },
+      { employee_id: input.employeeId, leave_type: input.leaveType, entitlement: input.entitlement },
+      { onConflict: "employee_id,leave_type,leave_year_start" },
     );
   if (error) throw error;
 }

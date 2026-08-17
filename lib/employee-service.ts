@@ -65,7 +65,9 @@ export async function getTodayEvents(): Promise<AttendanceEventRecord[]> {
 }
 
 export async function getLeaveBalances(): Promise<LeaveBalance[]> {
-  const { data, error } = await client().from("leave_balances").select("leave_type,entitlement,earned,used");
+  // leave_balances_current computes "earned" live from monthly accrual and is
+  // scoped to the active Apr-Mar leave year — see 20260825_leave_year_accrual.sql.
+  const { data, error } = await client().from("leave_balances_current").select("leave_type,entitlement,earned,used");
   if (error) throw error;
   return (data ?? []).map((row) => ({ leaveType: row.leave_type, entitlement: Number(row.entitlement), earned: Number(row.earned), used: Number(row.used) }));
 }
