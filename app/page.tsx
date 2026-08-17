@@ -245,6 +245,33 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The app never re-fetches on its own once mounted, so a tab left open (or a PWA
+  // kept in the background) across midnight would keep showing yesterday's
+  // "complete" state forever, with clock-in stuck disabled until a hard reload.
+  // Revalidate whenever the calendar day has moved on and the app regains attention.
+  useEffect(() => {
+    let lastDate = new Date().toDateString();
+    function revalidateIfNewDay() {
+      const currentDate = new Date().toDateString();
+      if (currentDate !== lastDate) {
+        lastDate = currentDate;
+        refresh().catch(() => undefined);
+      }
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") revalidateIfNewDay();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", revalidateIfNewDay);
+    const interval = setInterval(revalidateIfNewDay, 60000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", revalidateIfNewDay);
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!notice) return;
     const id = setTimeout(() => setNotice(null), 4500);
