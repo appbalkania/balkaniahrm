@@ -6,7 +6,10 @@ function client() {
   return supabase;
 }
 
-async function unwrapFunctionError(error: { message: string; context?: Response }): Promise<never> {
+async function unwrapFunctionError(error: { name?: string; message: string; context?: Response }): Promise<never> {
+  if (error.name === "FunctionsFetchError") {
+    throw new Error("Couldn't reach the server function. It may not be deployed to this Supabase project yet — see the setup notes for how to deploy it.");
+  }
   const body = await error.context?.json?.().catch(() => null);
   throw new Error(body?.error ?? error.message);
 }
