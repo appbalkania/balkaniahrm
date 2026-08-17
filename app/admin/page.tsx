@@ -18,16 +18,19 @@ import {
   listAttendanceSessions,
   listDisciplinaryActions,
   listEmployees,
+  listLeaveBalances,
   listManagers,
   listPendingLeaveRequests,
   listTeams,
   listWorkSchedules,
   reviewLeaveRequest,
+  setLeaveEntitlement,
   updateEmployee,
   updateTeam,
   type AdminAttendanceSession,
   type AdminDisciplinaryAction,
   type AdminEmployee,
+  type AdminLeaveBalance,
   type AdminLeaveRequest,
   type AdminManagerOption,
   type AdminTeam,
@@ -1002,6 +1005,20 @@ function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; o
 }
 
 function Leaves({ setNotice }: NoticeProps) {
+  const [view, setView] = useState<"requests" | "entitlements">("requests");
+
+  return (
+    <>
+      <div className="module-tabs">
+        <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Requests</button>
+        <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
+      </div>
+      {view === "requests" ? <LeaveRequests setNotice={setNotice} /> : <LeaveEntitlements setNotice={setNotice} />}
+    </>
+  );
+}
+
+function LeaveRequests({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminLeaveRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1065,6 +1082,144 @@ function Leaves({ setNotice }: NoticeProps) {
         </section>
       )}
     </>
+  );
+}
+
+const leaveTypeOptions: Array<[string, string]> = [
+  ["annual", "Annual"],
+  ["medical", "Medical"],
+  ["unpaid", "Unpaid"],
+  ["other", "Other"],
+];
+
+function LeaveEntitlements({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminLeaveBalance[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  function load() {
+    listLeaveBalances()
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load leave entitlements."));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <>
+      <Toolbar action="Set entitlement" onAction={() => setShowModal(true)} />
+      {showModal && (
+        <SetEntitlementModal
+          onClose={() => setShowModal(false)}
+          onSaved={(employeeName) => {
+            setShowModal(false);
+            setNotice(`Entitlement saved for ${employeeName}.`);
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="calendar" title="No entitlements set" note="Set entitlements for employees and managers so their leave balances show up correctly." />
+      ) : (
+        <section className="panel">
+          <div className="table-head cols-5"><b>Employee</b><b>Leave type</b><b>Entitlement</b><b>Earned</b><b>Used</b></div>
+          {rows.map((row) => (
+            <div className="table-row cols-5" key={row.id}>
+              <span>{row.employeeName}</span>
+              <span className="capitalize">{row.leaveType}</span>
+              <span>{row.entitlement}</span>
+              <span>{row.earned}</span>
+              <span>{row.used}</span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function SetEntitlementModal({ onClose, onSaved }: { onClose: () => void; onSaved: (employeeName: string) => void }) {
+  const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [leaveType, setLeaveType] = useState("annual");
+  const [entitlement, setEntitlement] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listEmployees()
+      .then(setEmployees)
+      .catch(() => setEmployees([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!employeeId) {
+      setError("Choose an employee.");
+      return;
+    }
+    const value = Number(entitlement);
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Enter a valid number of days.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await setLeaveEntitlement({ employeeId, leaveType, entitlement: value });
+      const employee = employees.find((e) => e.id === employeeId);
+      onSaved(employee?.fullName ?? "employee");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the entitlement.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Set entitlement</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Works for employees and managers alike. Setting an existing employee/leave type combination updates it.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Employee or manager
+            <select required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={saving}>
+              <option value="">Select a person</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.fullName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Leave type
+            <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} disabled={saving}>
+              {leaveTypeOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Entitlement (days)
+            <input type="number" min="0" step="0.5" required value={entitlement} onChange={(e) => setEntitlement(e.target.value)} disabled={saving} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
