@@ -6,6 +6,11 @@ function client() {
   return supabase;
 }
 
+async function unwrapFunctionError(error: { message: string; context?: Response }): Promise<never> {
+  const body = await error.context?.json?.().catch(() => null);
+  throw new Error(body?.error ?? error.message);
+}
+
 export interface AdminEmployee {
   id: string;
   fullName: string;
@@ -52,13 +57,42 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       teamId: input.teamId || null,
     },
   });
-  if (error) {
-    const context = (error as { context?: Response }).context;
-    const body = await context?.json?.().catch(() => null);
-    throw new Error(body?.error ?? error.message);
-  }
+  if (error) return unwrapFunctionError(error);
   if (data?.error) throw new Error(data.error);
   return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null };
+}
+
+export interface UpdateEmployeeInput {
+  id: string;
+  fullName: string;
+  employeeCode: string;
+  role: string;
+  teamId?: string | null;
+}
+
+export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminEmployee> {
+  const { data, error } = await client()
+    .from("profiles")
+    .update({ full_name: input.fullName, employee_code: input.employeeCode, role: input.role, team_id: input.teamId || null })
+    .eq("id", input.id)
+    .select("id,full_name,employee_code,role,team_id,teams!profiles_team_id_fkey(name)")
+    .single();
+  if (error) throw error;
+  const team = Array.isArray(data.teams) ? data.teams[0] : data.teams;
+  return {
+    id: data.id,
+    fullName: data.full_name,
+    employeeCode: data.employee_code,
+    role: data.role,
+    teamId: data.team_id,
+    teamName: team?.name ?? null,
+  };
+}
+
+export async function deleteEmployee(employeeId: string): Promise<void> {
+  const { data, error } = await client().functions.invoke("delete-employee", { body: { employeeId } });
+  if (error) return unwrapFunctionError(error);
+  if (data?.error) throw new Error(data.error);
 }
 
 export interface AdminManagerOption {
@@ -104,6 +138,23 @@ export async function createTeam(input: CreateTeamInput): Promise<AdminTeam> {
   const { data, error } = await client()
     .from("teams")
     .insert({ name: input.name, manager_id: input.managerId || null })
+    .select("id,name,manager_id")
+    .single();
+  if (error) throw error;
+  return { id: data.id, name: data.name, managerId: data.manager_id, managerName: null };
+}
+
+export interface UpdateTeamInput {
+  id: string;
+  name: string;
+  managerId?: string | null;
+}
+
+export async function updateTeam(input: UpdateTeamInput): Promise<AdminTeam> {
+  const { data, error } = await client()
+    .from("teams")
+    .update({ name: input.name, manager_id: input.managerId || null })
+    .eq("id", input.id)
     .select("id,name,manager_id")
     .single();
   if (error) throw error;
