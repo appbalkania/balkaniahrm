@@ -5,8 +5,9 @@ import "./admin.css";
 import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../../lib/auth-service";
 import { getMyProfile } from "../../lib/employee-service";
+import { recordAttendance } from "../../lib/attendance-service";
 import { downloadCsv } from "../../lib/csv";
-import type { Profile } from "../../lib/domain";
+import type { AttendanceEventType, Profile } from "../../lib/domain";
 import {
   createEmployee,
   createTeam,
@@ -282,7 +283,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "recruitment" && (
           <EmptyPanel icon="userPlus" title="Recruitment" note="Job postings and candidate pipelines are coming in a later release." />
         )}
-        {module === "attendance" && <Attendance setNotice={setNotice} />}
+        {module === "attendance" && <Attendance setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "leaves" && <Leaves setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} />}
         {module === "performance" && (
@@ -833,20 +834,22 @@ function EditTeamModal({
   );
 }
 
-function Attendance({ setNotice }: NoticeProps) {
+function Attendance({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
   const [rows, setRows] = useState<AdminAttendanceSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [showRecordModal, setShowRecordModal] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
-    let active = true;
+  function load() {
     listAttendanceSessions(today)
-      .then((data) => active && setRows(data))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Couldn't load attendance."));
-    return () => {
-      active = false;
-    };
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load attendance."));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today]);
 
   const working = rows?.filter((r) => r.state === "working" || r.state === "on_break" || r.state === "on_lunch").length ?? 0;
@@ -872,11 +875,25 @@ function Attendance({ setNotice }: NoticeProps) {
   return (
     <>
       <Toolbar
-        action="Review exceptions"
-        onAction={() => setNotice("Attendance exceptions are drawn from attendance_sessions and attendance_events.")}
+        action={isHrAdmin ? "Record attendance" : "Review exceptions"}
+        onAction={() =>
+          isHrAdmin
+            ? setShowRecordModal(true)
+            : setNotice("Attendance exceptions are drawn from attendance_sessions and attendance_events.")
+        }
         onExport={handleExport}
         exporting={exporting}
       />
+      {showRecordModal && (
+        <RecordAttendanceModal
+          onClose={() => setShowRecordModal(false)}
+          onRecorded={(employeeName) => {
+            setShowRecordModal(false);
+            setNotice(`Attendance recorded for ${employeeName}.`);
+            load();
+          }}
+        />
+      )}
       <div className="admin-stats">
         <Stat label="Currently working" value={String(working)} note="Live sessions" />
         <Stat label="Work completed" value={String(complete)} note="Today" />
@@ -903,6 +920,84 @@ function Attendance({ setNotice }: NoticeProps) {
         </section>
       )}
     </>
+  );
+}
+
+const attendanceEventOptions: Array<[AttendanceEventType, string]> = [
+  ["clock_in", "Clock in"],
+  ["clock_out", "Clock out"],
+  ["break_start", "First break start"],
+  ["break_end", "First break end"],
+  ["lunch_start", "Lunch start"],
+  ["lunch_end", "Lunch end"],
+];
+
+function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; onRecorded: (employeeName: string) => void }) {
+  const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [eventType, setEventType] = useState<AttendanceEventType>("clock_in");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listEmployees()
+      .then(setEmployees)
+      .catch(() => setEmployees([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!employeeId) {
+      setError("Choose an employee.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await recordAttendance({ eventType, idempotencyKey: crypto.randomUUID(), source: "admin", employeeId });
+      const employee = employees.find((e) => e.id === employeeId);
+      onRecorded(employee?.fullName ?? "employee");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't record attendance.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Record attendance</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Records the event for today, exactly as if the employee had done it themselves.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Employee
+            <select required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={saving}>
+              <option value="">Select an employee</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.fullName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Action
+            <select value={eventType} onChange={(e) => setEventType(e.target.value as AttendanceEventType)} disabled={saving}>
+              {attendanceEventOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Recording…" : "Record"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

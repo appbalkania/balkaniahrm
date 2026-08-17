@@ -238,8 +238,9 @@ h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .profile-card { display: flex; align-items: center; gap: 14px; }
 .avatar-lg { width: 52px; height: 52px; border-radius: 16px; background: var(--brand-soft); color: var(--brand-dark); display: grid; place-items: center; font-weight: 700; font-size: 17px; }
 
-.settings { border-top: 1px solid var(--line); margin-top: 10px; }
-.settings button { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border: 0; border-bottom: 1px solid var(--line); background: #fff; font-size: 14.5px; color: var(--ink); }
+.settings { margin: 16px 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); overflow: hidden; }
+.settings button { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border: 0; border-bottom: 1px solid var(--line); background: #fff; font-size: 14.5px; color: var(--ink); }
+.settings button:last-child { border-bottom: 0; }
 .setting-label { display: flex; align-items: center; gap: 10px; }
 .settings b { color: var(--muted); font-weight: 400; }
 

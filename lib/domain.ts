@@ -1,6 +1,6 @@
 export type AttendanceEventType = "clock_in" | "clock_out" | "break_start" | "break_end" | "lunch_start" | "lunch_end";
 export type AttendanceState = "not_started" | "working" | "on_break" | "on_lunch" | "complete";
-export type AttendanceSource = "pwa" | "kiosk" | "web";
+export type AttendanceSource = "pwa" | "kiosk" | "web" | "admin";
 
 export interface AttendanceEventInput {
   eventType: AttendanceEventType;
@@ -10,6 +10,7 @@ export interface AttendanceEventInput {
   latitude?: number;
   longitude?: number;
   qrToken?: string;
+  employeeId?: string;
 }
 
 export interface AttendanceSession {
