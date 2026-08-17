@@ -13,6 +13,7 @@ import {
   getMyProfile,
   getTodayEvents,
   getTodaySession,
+  getWhoIsOnLeaveToday,
   submitLeaveRequest,
   type MonthSessionSummary,
 } from "../lib/employee-service";
@@ -22,6 +23,7 @@ import type {
   AttendanceState,
   LeaveBalance,
   LeaveRequestRecord,
+  OnLeaveEntry,
   Profile,
 } from "../lib/domain";
 
@@ -215,6 +217,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   const [monthSessions, setMonthSessions] = useState<MonthSessionSummary[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
+  const [onLeaveToday, setOnLeaveToday] = useState<OnLeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<AttendanceAction | null>(null);
   const [kioskCode, setKioskCode] = useState("");
@@ -223,18 +226,20 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-    const [session, events, sessions, balances, requests] = await Promise.all([
+    const [session, events, sessions, balances, requests, onLeave] = await Promise.all([
       getTodaySession(),
       getTodayEvents(),
       getMonthSessions(monthStart, monthEnd),
       getLeaveBalances(),
       getLeaveRequests(),
+      getWhoIsOnLeaveToday(),
     ]);
     setAttendanceState(session?.state ?? "not_started");
     setTodayEvents(events);
     setMonthSessions(sessions);
     setLeaveBalances(balances);
     setLeaveRequests(requests);
+    setOnLeaveToday(onLeave);
   }
 
   useEffect(() => {
@@ -325,7 +330,13 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
         ) : (
           <>
             {screen === "home" && (
-              <HomeScreen profile={profile} monthSessions={monthSessions} attendanceState={attendanceState} onNavigate={setScreen} />
+              <HomeScreen
+                profile={profile}
+                monthSessions={monthSessions}
+                attendanceState={attendanceState}
+                onLeaveToday={onLeaveToday}
+                onNavigate={setScreen}
+              />
             )}
             {screen === "leaves" && (
               <LeavesScreen profile={profile} balances={leaveBalances} requests={leaveRequests} onSubmit={handleLeaveSubmit} />
@@ -368,11 +379,13 @@ function HomeScreen({
   profile,
   monthSessions,
   attendanceState,
+  onLeaveToday,
   onNavigate,
 }: {
   profile: Profile;
   monthSessions: MonthSessionSummary[];
   attendanceState: AttendanceState;
+  onLeaveToday: OnLeaveEntry[];
   onNavigate: (screen: Screen) => void;
 }) {
   const { avgCheckIn, avgCheckOut } = useMemo(() => averageTimes(monthSessions), [monthSessions]);
@@ -431,6 +444,27 @@ function HomeScreen({
           ))}
         </div>
         <p className="muted small">Light to dark: worked time · Red: missed clock-out</p>
+      </section>
+
+      <section className="card">
+        <div className="row">
+          <h2>On leave today</h2>
+          <Icon name="users" size={18} className="muted-icon" />
+        </div>
+        {onLeaveToday.length ? (
+          <ul className="leave-list">
+            {onLeaveToday.map((entry, index) => (
+              <li key={`${entry.employeeName}-${index}`}>
+                <div>
+                  <b>{entry.employeeName}</b>
+                </div>
+                <span className="pill">{leaveTypeLabel(entry.leaveType)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">Everyone&apos;s in today.</p>
+        )}
       </section>
     </>
   );

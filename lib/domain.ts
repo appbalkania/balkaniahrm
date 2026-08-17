@@ -66,3 +66,8 @@ export interface AttendanceEventRecord {
   eventType: AttendanceEventType;
   occurredAt: string;
 }
+
+export interface OnLeaveEntry {
+  employeeName: string;
+  leaveType: string;
+}
