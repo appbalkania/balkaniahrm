@@ -10,6 +10,7 @@ import type { Profile } from "../../lib/domain";
 import {
   createEmployee,
   createTeam,
+  deleteEmployee,
   getDashboardStats,
   issueDisciplinaryAction,
   listAttendanceDevices,
@@ -21,6 +22,8 @@ import {
   listTeams,
   listWorkSchedules,
   reviewLeaveRequest,
+  updateEmployee,
+  updateTeam,
   type AdminAttendanceSession,
   type AdminDisciplinaryAction,
   type AdminEmployee,
@@ -356,6 +359,8 @@ function Employees({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminEmployee[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<AdminEmployee | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   function load() {
@@ -385,6 +390,20 @@ function Employees({ setNotice }: NoticeProps) {
     }
   }
 
+  async function handleDelete(row: AdminEmployee) {
+    if (!window.confirm(`Delete ${row.fullName}? This permanently removes their account and cannot be undone.`)) return;
+    setBusyId(row.id);
+    try {
+      await deleteEmployee(row.id);
+      setNotice(`${row.fullName} was deleted.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't delete the employee.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} onExport={handleExport} exporting={exporting} />
@@ -398,6 +417,17 @@ function Employees({ setNotice }: NoticeProps) {
           }}
         />
       )}
+      {editingEmployee && (
+        <EditEmployeeModal
+          employee={editingEmployee}
+          onClose={() => setEditingEmployee(null)}
+          onSaved={(employee) => {
+            setEditingEmployee(null);
+            load();
+            setNotice(`${employee.fullName} was updated.`);
+          }}
+        />
+      )}
       {error ? (
         <ErrorState message={error} />
       ) : !rows ? (
@@ -406,13 +436,21 @@ function Employees({ setNotice }: NoticeProps) {
         <EmptyPanel icon="users" title="No employees yet" note="Add or import employees to see them here." />
       ) : (
         <section className="panel">
-          <div className="table-head"><b>Employee</b><b>Code</b><b>Role</b><b>Team</b></div>
+          <div className="table-head cols-5"><b>Employee</b><b>Code</b><b>Role</b><b>Team</b><b>Actions</b></div>
           {rows.map((row) => (
-            <div className="table-row" key={row.id}>
+            <div className="table-row cols-5" key={row.id}>
               <span><i className="person-dot">{row.fullName[0]}</i>{row.fullName}</span>
               <span>{row.employeeCode}</span>
               <span className="capitalize">{row.role.replace("_", " ")}</span>
               <span>{row.teamName ?? "—"}</span>
+              <span className="row-actions">
+                <button className="icon-action" disabled={busyId === row.id} onClick={() => setEditingEmployee(row)} aria-label={`Edit ${row.fullName}`}>
+                  <Icon name="edit" size={15} />
+                </button>
+                <button className="icon-action reject" disabled={busyId === row.id} onClick={() => handleDelete(row)} aria-label={`Delete ${row.fullName}`}>
+                  <Icon name="trash" size={15} />
+                </button>
+              </span>
             </div>
           ))}
         </section>
@@ -509,11 +547,94 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
+function EditEmployeeModal({
+  employee,
+  onClose,
+  onSaved,
+}: {
+  employee: AdminEmployee;
+  onClose: () => void;
+  onSaved: (employee: AdminEmployee) => void;
+}) {
+  const [fullName, setFullName] = useState(employee.fullName);
+  const [employeeCode, setEmployeeCode] = useState(employee.employeeCode);
+  const [role, setRole] = useState(employee.role);
+  const [teamId, setTeamId] = useState(employee.teamId ?? "");
+  const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listTeams()
+      .then(setTeams)
+      .catch(() => setTeams([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const updated = await updateEmployee({ id: employee.id, fullName, employeeCode, role, teamId: teamId || null });
+      onSaved(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Edit employee</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Full name
+            <input required value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Employee code
+            <input required value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Role
+            <select value={role} onChange={(e) => setRole(e.target.value)} disabled={saving}>
+              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="hr_admin">HR admin</option>
+              <option value="kiosk">Kiosk</option>
+            </select>
+          </label>
+          <label>
+            Team
+            <select value={teamId} onChange={(e) => setTeamId(e.target.value)} disabled={saving}>
+              <option value="">No team</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Teams({ setNotice }: NoticeProps) {
   const [teams, setTeams] = useState<AdminTeam[] | null>(null);
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<AdminTeam | null>(null);
 
   function load() {
     Promise.all([listTeams(), listEmployees()])
@@ -546,6 +667,17 @@ function Teams({ setNotice }: NoticeProps) {
           }}
         />
       )}
+      {editingTeam && (
+        <EditTeamModal
+          team={editingTeam}
+          onClose={() => setEditingTeam(null)}
+          onSaved={(team) => {
+            setEditingTeam(null);
+            setNotice(`Team "${team.name}" was updated.`);
+            load();
+          }}
+        />
+      )}
       {error ? (
         <ErrorState message={error} />
       ) : !teams ? (
@@ -554,13 +686,18 @@ function Teams({ setNotice }: NoticeProps) {
         <EmptyPanel icon="users" title="No teams yet" note="Create a team and assign a manager so employees can be added to it." />
       ) : (
         <section className="panel">
-          <div className="table-head"><b>Team</b><b>Manager</b><b>Members</b><b>Status</b></div>
+          <div className="table-head cols-5"><b>Team</b><b>Manager</b><b>Members</b><b>Status</b><b>Actions</b></div>
           {teams.map((team) => (
-            <div className="table-row" key={team.id}>
+            <div className="table-row cols-5" key={team.id}>
               <span>{team.name}</span>
               <span>{team.managerName ?? "Unassigned"}</span>
               <span>{memberCounts[team.id] ?? 0}</span>
               <span className={`pill ${team.managerId ? "success" : "pending"}`}>{team.managerId ? "Managed" : "No manager"}</span>
+              <span className="row-actions">
+                <button className="icon-action" onClick={() => setEditingTeam(team)} aria-label={`Edit ${team.name}`}>
+                  <Icon name="edit" size={15} />
+                </button>
+              </span>
             </div>
           ))}
         </section>
@@ -622,6 +759,73 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
             <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Creating…" : "Create team"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditTeamModal({
+  team,
+  onClose,
+  onSaved,
+}: {
+  team: AdminTeam;
+  onClose: () => void;
+  onSaved: (team: AdminTeam) => void;
+}) {
+  const [name, setName] = useState(team.name);
+  const [managerId, setManagerId] = useState(team.managerId ?? "");
+  const [managers, setManagers] = useState<AdminManagerOption[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listManagers()
+      .then(setManagers)
+      .catch(() => setManagers([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const updated = await updateTeam({ id: team.id, name, managerId: managerId || null });
+      onSaved(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Edit team</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Team name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Manager
+            <select value={managerId} onChange={(e) => setManagerId(e.target.value)} disabled={saving}>
+              <option value="">Unassigned</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.fullName}</option>
+              ))}
+            </select>
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
           </div>
         </form>
       </div>
