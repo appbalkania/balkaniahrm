@@ -10,6 +10,7 @@ import {
   getLeaveBalances,
   getLeaveRequests,
   getMonthSessions,
+  getMyDisciplinaryNotes,
   getMyProfile,
   getTodayEvents,
   getTodaySession,
@@ -21,13 +22,14 @@ import type {
   AttendanceEventRecord,
   AttendanceEventType,
   AttendanceState,
+  DisciplinaryNote,
   LeaveBalance,
   LeaveRequestRecord,
   OnLeaveEntry,
   Profile,
 } from "../lib/domain";
 
-type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "kiosk";
+type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "kiosk";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
@@ -218,6 +220,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [onLeaveToday, setOnLeaveToday] = useState<OnLeaveEntry[]>([]);
+  const [disciplinaryNotes, setDisciplinaryNotes] = useState<DisciplinaryNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<AttendanceAction | null>(null);
   const [kioskCode, setKioskCode] = useState("");
@@ -226,13 +229,14 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-    const [session, events, sessions, balances, requests, onLeave] = await Promise.all([
+    const [session, events, sessions, balances, requests, onLeave, notes] = await Promise.all([
       getTodaySession(),
       getTodayEvents(),
       getMonthSessions(monthStart, monthEnd),
       getLeaveBalances(),
       getLeaveRequests(),
       getWhoIsOnLeaveToday(),
+      getMyDisciplinaryNotes(),
     ]);
     setAttendanceState(session?.state ?? "not_started");
     setTodayEvents(events);
@@ -240,6 +244,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     setLeaveBalances(balances);
     setLeaveRequests(requests);
     setOnLeaveToday(onLeave);
+    setDisciplinaryNotes(notes);
   }
 
   useEffect(() => {
@@ -346,8 +351,9 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} state={attendanceState} />}
             {screen === "profile" && (
-              <ProfileScreen profile={profile} configured={configured} onKiosk={() => setScreen("kiosk")} />
+              <ProfileScreen profile={profile} configured={configured} onKiosk={() => setScreen("kiosk")} onDocuments={() => setScreen("documents")} />
             )}
+            {screen === "documents" && <DocumentsScreen notes={disciplinaryNotes} onBack={() => setScreen("profile")} />}
             {screen === "kiosk" && <KioskScreen code={kioskCode} setCode={setKioskCode} setNotice={setNotice} onExit={() => setScreen("profile")} />}
           </>
         )}
@@ -700,7 +706,17 @@ function TrackingScreen({ events, state }: { events: AttendanceEventRecord[]; st
   );
 }
 
-function ProfileScreen({ profile, configured, onKiosk }: { profile: Profile; configured: boolean; onKiosk: () => void }) {
+function ProfileScreen({
+  profile,
+  configured,
+  onKiosk,
+  onDocuments,
+}: {
+  profile: Profile;
+  configured: boolean;
+  onKiosk: () => void;
+  onDocuments: () => void;
+}) {
   return (
     <>
       <h1>Profile</h1>
@@ -718,7 +734,7 @@ function ProfileScreen({ profile, configured, onKiosk }: { profile: Profile; con
         <Setting label="Notifications" value="On" icon="bell" />
         <Setting label="Location" value="Off" icon="calendar" />
         <Setting label="Camera permission" value="Not granted" icon="qr" />
-        <Setting label="Documents" value="" icon="archive" chevron />
+        <Setting label="Documents" value="" icon="archive" chevron onClick={onDocuments} />
       </section>
       {(profile.role === "hr_admin" || profile.role === "manager") && (
         <>
@@ -734,6 +750,46 @@ function ProfileScreen({ profile, configured, onKiosk }: { profile: Profile; con
         <Icon name="logout" size={17} /> Sign out
       </button>
       {!configured && <p className="muted small center">Demo mode — Supabase is not connected in this environment.</p>}
+    </>
+  );
+}
+
+const disciplinarySeverityLabels: Record<string, string> = {
+  verbal_warning: "Verbal warning",
+  written_warning: "Written warning",
+  final_warning: "Final warning",
+  suspension: "Suspension",
+  termination_notice: "Termination notice",
+};
+
+function DocumentsScreen({ notes, onBack }: { notes: DisciplinaryNote[]; onBack: () => void }) {
+  return (
+    <>
+      <button className="text-button back" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} /> Back to profile
+      </button>
+      <h1>Documents</h1>
+      <p className="muted">Disciplinary notices issued to you.</p>
+      {notes.length ? (
+        <ul className="leave-list">
+          {notes.map((note) => (
+            <li key={note.id} className="document-note">
+              <div>
+                <b>{disciplinarySeverityLabels[note.severity] ?? note.severity}</b>
+                <span className="muted small">{formatDate(note.occurredOn)}</span>
+                <p className="muted small">{note.reason}</p>
+                {note.details && <p className="muted small">{note.details}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <section className="empty">
+          <Icon name="archive" size={44} className="empty-icon" />
+          <h2>No documents</h2>
+          <p className="muted">Notices and records issued to you will appear here.</p>
+        </section>
+      )}
     </>
   );
 }
@@ -822,9 +878,21 @@ function AttendanceCard({ title, value, clockIn, clockOut }: { title: string; va
   );
 }
 
-function Setting({ label, value, icon, chevron }: { label: string; value: string; icon: Parameters<typeof Icon>[0]["name"]; chevron?: boolean }) {
+function Setting({
+  label,
+  value,
+  icon,
+  chevron,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  icon: Parameters<typeof Icon>[0]["name"];
+  chevron?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <button>
+    <button onClick={onClick} disabled={!onClick}>
       <span className="setting-label">
         <Icon name={icon} size={18} className="muted-icon" />
         {label}

@@ -71,3 +71,11 @@ export interface OnLeaveEntry {
   employeeName: string;
   leaveType: string;
 }
+
+export interface DisciplinaryNote {
+  id: string;
+  severity: string;
+  reason: string;
+  details: string | null;
+  occurredOn: string;
+}

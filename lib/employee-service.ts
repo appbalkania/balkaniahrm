@@ -1,6 +1,7 @@
 import type {
   AttendanceEventRecord,
   AttendanceSession,
+  DisciplinaryNote,
   LeaveBalance,
   LeaveRequestInput,
   LeaveRequestRecord,
@@ -83,6 +84,21 @@ export async function getLeaveRequests(): Promise<LeaveRequestRecord[]> {
     status: row.status,
     note: row.note,
     createdAt: row.created_at,
+  }));
+}
+
+export async function getMyDisciplinaryNotes(): Promise<DisciplinaryNote[]> {
+  const { data, error } = await client()
+    .from("disciplinary_actions")
+    .select("id,severity,reason,details,occurred_on")
+    .order("occurred_on", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    severity: row.severity,
+    reason: row.reason,
+    details: row.details,
+    occurredOn: row.occurred_on,
   }));
 }
 
