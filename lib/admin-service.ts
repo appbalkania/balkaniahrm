@@ -236,9 +236,16 @@ export interface SetLeaveEntitlementInput {
 }
 
 export async function setLeaveEntitlement(input: SetLeaveEntitlementInput): Promise<void> {
+  // There's no accrual engine in this app yet, so entitlement is granted in full
+  // immediately — "earned" tracks it 1:1 rather than sitting at 0 until something
+  // else increments it. "used" is deliberately left out of the payload so an
+  // existing balance's usage isn't reset when HR updates the entitlement.
   const { error } = await client()
     .from("leave_balances")
-    .upsert({ employee_id: input.employeeId, leave_type: input.leaveType, entitlement: input.entitlement }, { onConflict: "employee_id,leave_type" });
+    .upsert(
+      { employee_id: input.employeeId, leave_type: input.leaveType, entitlement: input.entitlement, earned: input.entitlement },
+      { onConflict: "employee_id,leave_type" },
+    );
   if (error) throw error;
 }
 
