@@ -20,6 +20,13 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export async function issueQrToken(): Promise<{ token: string; expiresAt: string }> {
+  const { data, error } = await client().rpc("issue_qr_token");
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { token: row.token, expiresAt: row.expires_at };
+}
+
 export async function getMyProfile(): Promise<Profile | null> {
   const { data: auth } = await client().auth.getUser();
   if (!auth.user) return null;

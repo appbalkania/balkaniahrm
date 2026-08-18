@@ -1487,8 +1487,12 @@ function Devices({ setNotice }: NoticeProps) {
             <div className="device-card" key={device.id}>
               <div>
                 <b>{device.label}</b>
-                <p className="muted">{device.active ? "Active" : "Inactive"} · Restricted kiosk account</p>
+                <p className="muted">
+                  {device.active ? "Active" : "Inactive"} · Restricted kiosk account
+                  {device.lastSeenAt && <> · Last active {new Date(device.lastSeenAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</>}
+                </p>
               </div>
+              <span className={`pill ${device.paired ? "success" : ""}`}>{device.paired ? "Paired" : "Not paired"}</span>
               <span className="row-actions">
                 <button className="outline-button" disabled={busyId === device.id} onClick={() => handleRegenerate(device)}>
                   Regenerate PIN

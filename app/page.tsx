@@ -15,6 +15,7 @@ import {
   getTodayEvents,
   getTodaySession,
   getWhoIsOnLeaveToday,
+  issueQrToken,
   submitLeaveRequest,
   type MonthSessionSummary,
 } from "../lib/employee-service";
@@ -29,7 +30,7 @@ import type {
   Profile,
 } from "../lib/domain";
 
-type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "kiosk";
+type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
@@ -223,7 +224,6 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   const [disciplinaryNotes, setDisciplinaryNotes] = useState<DisciplinaryNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<AttendanceAction | null>(null);
-  const [kioskCode, setKioskCode] = useState("");
 
   async function refresh() {
     const now = new Date();
@@ -351,23 +351,20 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} state={attendanceState} />}
             {screen === "profile" && (
-              <ProfileScreen profile={profile} configured={configured} onKiosk={() => setScreen("kiosk")} onDocuments={() => setScreen("documents")} />
+              <ProfileScreen profile={profile} configured={configured} onDocuments={() => setScreen("documents")} />
             )}
             {screen === "documents" && <DocumentsScreen notes={disciplinaryNotes} onBack={() => setScreen("profile")} />}
-            {screen === "kiosk" && <KioskScreen code={kioskCode} setCode={setKioskCode} setNotice={setNotice} onExit={() => setScreen("profile")} />}
           </>
         )}
       </section>
 
-      {screen !== "kiosk" && (
-        <nav className="bottom-nav" aria-label="Main navigation">
-          <NavButton active={screen === "home"} label="Home" icon="home" onClick={() => setScreen("home")} />
-          <NavButton active={screen === "leaves"} label="Leaves" icon="calendar" onClick={() => setScreen("leaves")} />
-          <NavButton active={screen === "code"} label="Check in" icon="qr" onClick={() => setScreen("code")} primary />
-          <NavButton active={screen === "tracking"} label="Tracking" icon="clock" onClick={() => setScreen("tracking")} />
-          <NavButton active={screen === "profile"} label="Profile" icon="user" onClick={() => setScreen("profile")} />
-        </nav>
-      )}
+      <nav className="bottom-nav" aria-label="Main navigation">
+        <NavButton active={screen === "home"} label="Home" icon="home" onClick={() => setScreen("home")} />
+        <NavButton active={screen === "leaves"} label="Leaves" icon="calendar" onClick={() => setScreen("leaves")} />
+        <NavButton active={screen === "code"} label="Check in" icon="qr" onClick={() => setScreen("code")} primary />
+        <NavButton active={screen === "tracking"} label="Tracking" icon="clock" onClick={() => setScreen("tracking")} />
+        <NavButton active={screen === "profile"} label="Profile" icon="user" onClick={() => setScreen("profile")} />
+      </nav>
     </main>
   );
 }
@@ -643,12 +640,30 @@ function CodeScreen({
   busyAction: AttendanceAction | null;
   onAction: (action: AttendanceAction) => void;
 }) {
-  const [tick, setTick] = useState(() => Math.floor(Date.now() / 30000));
+  const [qr, setQr] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [qrError, setQrError] = useState(false);
+
   useEffect(() => {
-    const id = setInterval(() => setTick(Math.floor(Date.now() / 30000)), 1000);
-    return () => clearInterval(id);
+    let active = true;
+    function fetchToken() {
+      issueQrToken()
+        .then((next) => {
+          if (active) {
+            setQr(next);
+            setQrError(false);
+          }
+        })
+        .catch(() => {
+          if (active) setQrError(true);
+        });
+    }
+    fetchToken();
+    const id = setInterval(fetchToken, 25000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
   }, []);
-  const token = `balkania:attendance:${profile.employeeCode}:${tick}`;
 
   return (
     <>
@@ -660,9 +675,17 @@ function CodeScreen({
         </div>
       )}
       <section className="card qr-card">
-        <QRCodeSVG value={token} size={176} marginSize={4} />
+        {qr ? (
+          <QRCodeSVG value={qr.token} size={176} marginSize={4} />
+        ) : (
+          <div className="qr-placeholder">
+            <Icon name={qrError ? "warning" : "spinner"} size={24} className={qrError ? undefined : "spin"} />
+          </div>
+        )}
         <h2>My attendance code</h2>
-        <p className="muted small">Show this code on the shared Balkania tablet. It refreshes every 30 seconds.</p>
+        <p className="muted small">
+          {qrError ? "Couldn't refresh your code. Check your connection." : "Show this code on the shared Balkania tablet. It refreshes every 30 seconds."}
+        </p>
       </section>
       <div className="action-grid">
         <Action label="Clock in" enabled={state === "not_started"} busy={busyAction === "clockIn"} onClick={() => onAction("clockIn")} />
@@ -709,12 +732,10 @@ function TrackingScreen({ events, state }: { events: AttendanceEventRecord[]; st
 function ProfileScreen({
   profile,
   configured,
-  onKiosk,
   onDocuments,
 }: {
   profile: Profile;
   configured: boolean;
-  onKiosk: () => void;
   onDocuments: () => void;
 }) {
   return (
@@ -737,14 +758,9 @@ function ProfileScreen({
         <Setting label="Documents" value="" icon="archive" chevron onClick={onDocuments} />
       </section>
       {(profile.role === "hr_admin" || profile.role === "manager") && (
-        <>
-          <a className="secondary-button" href="/admin">
-            <Icon name="layout" size={17} /> Open Balkania Admin
-          </a>
-          <button className="secondary-button" onClick={onKiosk}>
-            <Icon name="device" size={17} /> Open kiosk demo
-          </button>
-        </>
+        <a className="secondary-button" href="/admin">
+          <Icon name="layout" size={17} /> Open Balkania Admin
+        </a>
       )}
       <button className="danger-button" onClick={() => signOut()}>
         <Icon name="logout" size={17} /> Sign out
@@ -790,46 +806,6 @@ function DocumentsScreen({ notes, onBack }: { notes: DisciplinaryNote[]; onBack:
           <p className="muted">Notices and records issued to you will appear here.</p>
         </section>
       )}
-    </>
-  );
-}
-
-function KioskScreen({
-  code,
-  setCode,
-  setNotice,
-  onExit,
-}: {
-  code: string;
-  setCode: (value: string) => void;
-  setNotice: (value: string) => void;
-  onExit: () => void;
-}) {
-  return (
-    <>
-      <button className="text-button back" onClick={onExit}>
-        <Icon name="arrowLeft" size={16} /> Back to profile
-      </button>
-      <p className="eyebrow">BALKANIA SHARED DEVICE</p>
-      <h1>Attendance kiosk</h1>
-      <p className="muted">Scan an employee QR code or paste its value.</p>
-      <section className="card">
-        <label>
-          QR code value
-          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="balkania:attendance:..." />
-        </label>
-        <button
-          className="primary-button"
-          onClick={() => {
-            if (!code.trim()) return;
-            setNotice("QR attendance event accepted for secure server validation.");
-            setCode("");
-          }}
-        >
-          Record attendance
-        </button>
-      </section>
-      <p className="muted small">Production kiosks use the tablet camera and a dedicated, restricted device account.</p>
     </>
   );
 }

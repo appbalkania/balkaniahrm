@@ -228,6 +228,7 @@ h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .qr-card { text-align: center; }
 .qr-card svg { margin: 4px auto 14px; }
 .qr-card h2 { margin-top: 4px; }
+.qr-placeholder { width: 176px; height: 176px; margin: 4px auto 14px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 
 .action:disabled { opacity: 0.4; }
 .action.danger svg, .action.danger span { color: var(--danger); }

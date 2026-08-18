@@ -301,13 +301,15 @@ export interface AdminDevice {
   id: string;
   label: string;
   active: boolean;
+  paired: boolean;
+  lastSeenAt: string | null;
   createdAt: string;
 }
 
 export async function listAttendanceDevices(): Promise<AdminDevice[]> {
-  const { data, error } = await client().from("attendance_devices").select("id,label,active,created_at").order("created_at");
+  const { data, error } = await client().from("attendance_devices").select("id,label,active,paired,last_seen_at,created_at").order("created_at");
   if (error) throw error;
-  return (data ?? []).map((row) => ({ id: row.id, label: row.label, active: row.active, createdAt: row.created_at }));
+  return (data ?? []).map((row) => ({ id: row.id, label: row.label, active: row.active, paired: row.paired, lastSeenAt: row.last_seen_at, createdAt: row.created_at }));
 }
 
 export interface RegisteredDevice {
