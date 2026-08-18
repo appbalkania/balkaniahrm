@@ -23,11 +23,15 @@ import {
   listPendingLeaveRequests,
   listTeams,
   listWorkSchedules,
+  regenerateDevicePin,
+  registerDevice,
   reviewLeaveRequest,
+  setDeviceActive,
   setLeaveEntitlement,
   updateEmployee,
   updateTeam,
   type AdminAttendanceSession,
+  type AdminDevice,
   type AdminDisciplinaryAction,
   type AdminEmployee,
   type AdminLeaveBalance,
@@ -37,6 +41,7 @@ import {
   type AdminWorkSchedule,
   type DashboardStats,
   type DisciplinarySeverity,
+  type RegisteredDevice,
 } from "../../lib/admin-service";
 
 type Module =
@@ -1413,22 +1418,61 @@ function Schedules({ setNotice }: NoticeProps) {
 }
 
 function Devices({ setNotice }: NoticeProps) {
-  const [rows, setRows] = useState<Array<{ id: string; label: string; active: boolean }> | null>(null);
+  const [rows, setRows] = useState<AdminDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [pinReveal, setPinReveal] = useState<{ label: string; pin: string } | null>(null);
+
+  function load() {
+    listAttendanceDevices()
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load kiosk devices."));
+  }
 
   useEffect(() => {
-    let active = true;
-    listAttendanceDevices()
-      .then((data) => active && setRows(data as Array<{ id: string; label: string; active: boolean }>))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Couldn't load kiosk devices."));
-    return () => {
-      active = false;
-    };
+    load();
   }, []);
+
+  async function handleRegenerate(device: AdminDevice) {
+    setBusyId(device.id);
+    try {
+      const pin = await regenerateDevicePin(device.id);
+      setPinReveal({ label: device.label, pin });
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't regenerate the PIN.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleToggleActive(device: AdminDevice) {
+    setBusyId(device.id);
+    try {
+      await setDeviceActive(device.id, !device.active);
+      setNotice(`${device.label} ${device.active ? "deactivated" : "reactivated"}.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't update the device.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <>
-      <Toolbar action="Register kiosk" onAction={() => setNotice("Kiosk registration creates a restricted attendance_devices record and one-time PIN.")} />
+      <Toolbar action="Register kiosk" onAction={() => setShowRegisterModal(true)} />
+      {showRegisterModal && (
+        <RegisterKioskModal
+          onClose={() => setShowRegisterModal(false)}
+          onRegistered={(device) => {
+            setShowRegisterModal(false);
+            setPinReveal({ label: device.label, pin: device.pin });
+            load();
+          }}
+        />
+      )}
+      {pinReveal && <KioskPinModal label={pinReveal.label} pin={pinReveal.pin} onClose={() => setPinReveal(null)} />}
       <section className="panel">
         <div className="panel-title"><h2>QR attendance devices</h2><span className="pill success">QR mode enabled</span></div>
         <p className="muted">Employees show their rotating personal QR code. A dedicated tablet scans it and records the server-validated attendance event.</p>
@@ -1445,7 +1489,14 @@ function Devices({ setNotice }: NoticeProps) {
                 <b>{device.label}</b>
                 <p className="muted">{device.active ? "Active" : "Inactive"} · Restricted kiosk account</p>
               </div>
-              <button className="outline-button">Regenerate PIN</button>
+              <span className="row-actions">
+                <button className="outline-button" disabled={busyId === device.id} onClick={() => handleRegenerate(device)}>
+                  Regenerate PIN
+                </button>
+                <button className="outline-button" disabled={busyId === device.id} onClick={() => handleToggleActive(device)}>
+                  {device.active ? "Deactivate" : "Reactivate"}
+                </button>
+              </span>
             </div>
           ))
         )}
@@ -1458,6 +1509,67 @@ function Devices({ setNotice }: NoticeProps) {
         </section>
       </section>
     </>
+  );
+}
+
+function RegisterKioskModal({ onClose, onRegistered }: { onClose: () => void; onRegistered: (device: RegisteredDevice) => void }) {
+  const [label, setLabel] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const device = await registerDevice(label);
+      onRegistered(device);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't register the kiosk.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Register kiosk</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">Creates a restricted attendance device with a one-time PIN. Give the PIN to whoever sets up the shared tablet — it's shown once and can't be retrieved later, only regenerated.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Device label
+            <input required value={label} onChange={(e) => setLabel(e.target.value)} disabled={saving} placeholder="e.g. Front desk tablet" />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Registering…" : "Register"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function KioskPinModal({ label, pin, onClose }: { label: string; pin: string; onClose: () => void }) {
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>{label}</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">This PIN won't be shown again. Write it down or share it with whoever's setting up the device now.</p>
+        <p className="kiosk-pin">{pin}</p>
+        <div className="admin-modal-actions">
+          <button className="primary-admin" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
