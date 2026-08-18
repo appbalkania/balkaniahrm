@@ -15,6 +15,7 @@ import {
   deleteEmployee,
   deleteHoliday,
   getDashboardStats,
+  getEmployeeDetails,
   issueDisciplinaryAction,
   listAdminHolidays,
   listAttendanceDevices,
@@ -35,6 +36,7 @@ import {
   setLeaveEntitlement,
   updateEmployee,
   updateTeam,
+  upsertEmployeeDetails,
   type AdminAttendanceSession,
   type AdminDevice,
   type AdminDisciplinaryAction,
@@ -484,10 +486,14 @@ function Employees({ setNotice }: NoticeProps) {
 function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreated: (employee: AdminEmployee) => void }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [employeeCode, setEmployeeCode] = useState("");
   const [role, setRole] = useState("employee");
   const [teamId, setTeamId] = useState("");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [ppsNumber, setPpsNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [address, setAddress] = useState("");
+  const [placeOfBirth, setPlaceOfBirth] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -508,7 +514,17 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setError(null);
     setSaving(true);
     try {
-      const employee = await createEmployee({ fullName, email, employeeCode, role, teamId: teamId || null });
+      const employee = await createEmployee({
+        fullName,
+        email,
+        role,
+        teamId: teamId || null,
+        ppsNumber,
+        dateOfBirth,
+        phoneNumber,
+        address,
+        placeOfBirth,
+      });
       onCreated(employee);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create the employee.");
@@ -524,7 +540,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <h2>Add employee</h2>
           <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>
-        <p className="muted small">Creates a profile and sends a Supabase auth invite email so they can set their password.</p>
+        <p className="muted small">Creates a profile and sends a Supabase auth invite email so they can set their password. Employee code is generated automatically.</p>
         <form className="admin-login-form" onSubmit={handleSubmit}>
           <label>
             Full name
@@ -533,10 +549,6 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <label>
             Work email
             <input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} disabled={saving} />
-          </label>
-          <label>
-            Employee code
-            <input required value={employeeCode} onChange={(e) => setEmployeeCode(e.target.value)} disabled={saving} />
           </label>
           <label>
             Role
@@ -558,6 +570,27 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </select>
             </label>
           )}
+          <p className="muted small">Personal details (optional — can be completed later)</p>
+          <label>
+            PPS number
+            <input value={ppsNumber} onChange={(e) => setPpsNumber(e.target.value)} disabled={saving} placeholder="1234567A" />
+          </label>
+          <label>
+            Date of birth
+            <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Phone number
+            <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} disabled={saving} placeholder="+353 1 234 5678" />
+          </label>
+          <label>
+            Place of birth
+            <input value={placeOfBirth} onChange={(e) => setPlaceOfBirth(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Address
+            <textarea value={address} onChange={(e) => setAddress(e.target.value)} disabled={saving} rows={2} />
+          </label>
           {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
@@ -583,6 +616,11 @@ function EditEmployeeModal({
   const [role, setRole] = useState(employee.role);
   const [teamId, setTeamId] = useState(employee.teamId ?? "");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [ppsNumber, setPpsNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [address, setAddress] = useState("");
+  const [placeOfBirth, setPlaceOfBirth] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -590,7 +628,17 @@ function EditEmployeeModal({
     listTeams()
       .then(setTeams)
       .catch(() => setTeams([]));
-  }, []);
+    getEmployeeDetails(employee.id)
+      .then((details) => {
+        setPpsNumber(details.ppsNumber ?? "");
+        setDateOfBirth(details.dateOfBirth ?? "");
+        setPhoneNumber(details.phoneNumber ?? "");
+        setAddress(details.address ?? "");
+        setPlaceOfBirth(details.placeOfBirth ?? "");
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee.id]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -598,6 +646,7 @@ function EditEmployeeModal({
     setSaving(true);
     try {
       const updated = await updateEmployee({ id: employee.id, fullName, employeeCode, role, teamId: teamId || null });
+      await upsertEmployeeDetails(employee.id, { ppsNumber, dateOfBirth, phoneNumber, address, placeOfBirth });
       onSaved(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save changes.");
@@ -639,6 +688,27 @@ function EditEmployeeModal({
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+          </label>
+          <p className="muted small">Personal details</p>
+          <label>
+            PPS number
+            <input value={ppsNumber} onChange={(e) => setPpsNumber(e.target.value)} disabled={saving} placeholder="1234567A" />
+          </label>
+          <label>
+            Date of birth
+            <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Phone number
+            <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} disabled={saving} placeholder="+353 1 234 5678" />
+          </label>
+          <label>
+            Place of birth
+            <input value={placeOfBirth} onChange={(e) => setPlaceOfBirth(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Address
+            <textarea value={address} onChange={(e) => setAddress(e.target.value)} disabled={saving} rows={2} />
           </label>
           {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
           <div className="admin-modal-actions">
