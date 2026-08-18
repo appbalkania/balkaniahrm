@@ -100,6 +100,15 @@
 }
 .kiosk-secondary-actions .kiosk-secondary-button { flex: 1 1 auto; }
 
+.kiosk-scan-again-button {
+  width: 100%;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .kiosk-text-button {
   border: 0;
   background: transparent;
