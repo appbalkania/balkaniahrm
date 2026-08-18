@@ -35,7 +35,7 @@ const stateLabels: Record<IdentifiedEmployee["state"], string> = {
   complete: "Day complete",
 };
 
-type Phase = "loading" | "pairing" | "scanning" | "identified";
+type Phase = "loading" | "pairing" | "ready" | "scanning" | "identified";
 type CameraError = "denied" | "no-camera" | null;
 
 export default function KioskPage() {
@@ -61,7 +61,7 @@ export default function KioskPage() {
     const existing = loadKioskSession();
     if (existing) {
       setSession(existing);
-      setPhase("scanning");
+      setPhase("ready");
     } else {
       setPhase("pairing");
     }
@@ -85,7 +85,7 @@ export default function KioskPage() {
       setSession(next);
       setPin("");
       setReauthBanner(null);
-      setPhase("scanning");
+      setPhase("ready");
     } catch (err) {
       setPairError(kioskErrorMessage(err));
     } finally {
@@ -126,7 +126,7 @@ export default function KioskPage() {
         return;
       }
       const scanner = new QrScanner(videoRef.current!, (result) => handleDecoded(result.data), {
-        preferredCamera: "environment",
+        preferredCamera: "user",
         highlightScanRegion: true,
         highlightCodeOutline: true,
       });
@@ -221,6 +221,19 @@ export default function KioskPage() {
               {pairing ? "Pairing…" : "Pair device"}
             </button>
           </form>
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === "ready") {
+    return (
+      <main className="kiosk kiosk-center">
+        <div className="kiosk-pair-card">
+          <Icon name="qr" size={32} />
+          <h1>Ready to scan</h1>
+          <p className="kiosk-muted">{session?.deviceLabel ?? "This device"} is paired. Start scanning to begin recording attendance.</p>
+          <button className="kiosk-primary-button" onClick={() => setPhase("scanning")}>Start scanning</button>
         </div>
       </main>
     );
