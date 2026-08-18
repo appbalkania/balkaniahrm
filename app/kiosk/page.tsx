@@ -13,10 +13,9 @@ import {
   pairDevice,
   recordKioskAttendance,
   saveKioskSession,
-  type IdentifiedEmployee,
   type KioskSession,
 } from "../../lib/kiosk-service";
-import type { AttendanceEventType } from "../../lib/domain";
+import type { AttendanceEventType, AttendanceState } from "../../lib/domain";
 
 const eventLabels: Record<AttendanceEventType, string> = {
   clock_in: "Clock in",
@@ -27,15 +26,17 @@ const eventLabels: Record<AttendanceEventType, string> = {
   lunch_end: "End lunch",
 };
 
-const stateLabels: Record<IdentifiedEmployee["state"], string> = {
-  not_started: "Not started yet",
-  working: "Currently working",
-  on_break: "On break",
-  on_lunch: "On lunch",
-  complete: "Day complete",
+const actionOrder: AttendanceEventType[] = ["clock_in", "clock_out", "break_start", "break_end", "lunch_start", "lunch_end"];
+
+const stateLabels: Record<AttendanceState, string> = {
+  not_started: "not started yet",
+  working: "currently working",
+  on_break: "on break",
+  on_lunch: "on lunch",
+  complete: "done for the day",
 };
 
-type Phase = "loading" | "pairing" | "ready" | "scanning" | "identified";
+type Phase = "loading" | "pairing" | "select-action" | "scanning";
 type CameraError = "denied" | "no-camera" | null;
 
 export default function KioskPage() {
@@ -44,13 +45,12 @@ export default function KioskPage() {
   const [pairError, setPairError] = useState<string | null>(null);
   const [pairing, setPairing] = useState(false);
   const [pin, setPin] = useState("");
+  const [selectedAction, setSelectedAction] = useState<AttendanceEventType | null>(null);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<CameraError>(null);
-  const [employee, setEmployee] = useState<IdentifiedEmployee | null>(null);
-  const [recordingAction, setRecordingAction] = useState<AttendanceEventType | null>(null);
-  const [confirmation, setConfirmation] = useState<string | null>(null);
   const [reauthBanner, setReauthBanner] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -61,7 +61,7 @@ export default function KioskPage() {
     const existing = loadKioskSession();
     if (existing) {
       setSession(existing);
-      setPhase("ready");
+      setPhase("select-action");
     } else {
       setPhase("pairing");
     }
@@ -70,7 +70,7 @@ export default function KioskPage() {
   function backToPairing(message: string) {
     clearKioskSession();
     setSession(null);
-    setEmployee(null);
+    setSelectedAction(null);
     setReauthBanner(message);
     setPhase("pairing");
   }
@@ -85,7 +85,7 @@ export default function KioskPage() {
       setSession(next);
       setPin("");
       setReauthBanner(null);
-      setPhase("ready");
+      setPhase("select-action");
     } catch (err) {
       setPairError(kioskErrorMessage(err));
     } finally {
@@ -93,13 +93,24 @@ export default function KioskPage() {
     }
   }
 
+  function chooseAction(action: AttendanceEventType) {
+    setSelectedAction(action);
+    setPhase("scanning");
+  }
+
   async function handleDecoded(qrToken: string) {
-    if (busyRef.current || !session) return;
+    if (busyRef.current || !session || !selectedAction) return;
     busyRef.current = true;
     try {
       const identified = await identifyEmployee(session.sessionToken, qrToken);
-      setEmployee(identified);
-      setPhase("identified");
+      if (!identified.validActions.includes(selectedAction)) {
+        setScanMessage(`${identified.fullName} is ${stateLabels[identified.state]} — can't ${eventLabels[selectedAction].toLowerCase()}.`);
+        setTimeout(() => setScanMessage(null), 3000);
+        return;
+      }
+      await recordKioskAttendance(session.sessionToken, identified.employeeId, selectedAction, crypto.randomUUID());
+      setSuccessMessage(`${eventLabels[selectedAction]} recorded for ${identified.fullName}.`);
+      setTimeout(() => setSuccessMessage(null), 2200);
     } catch (err) {
       if (isKioskSessionInvalidError(err)) {
         backToPairing(kioskErrorMessage(err));
@@ -142,7 +153,7 @@ export default function KioskPage() {
       scannerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, session]);
+  }, [phase, session, selectedAction]);
 
   function retryCamera() {
     setCameraError(null);
@@ -154,31 +165,6 @@ export default function KioskPage() {
     if (!manualToken.trim()) return;
     await handleDecoded(manualToken.trim());
     setManualToken("");
-  }
-
-  async function handleAction(eventType: AttendanceEventType) {
-    if (!session || !employee) return;
-    setRecordingAction(eventType);
-    try {
-      await recordKioskAttendance(session.sessionToken, employee.employeeId, eventType, crypto.randomUUID());
-      setConfirmation(`${eventLabels[eventType]} recorded for ${employee.fullName}.`);
-      setTimeout(() => {
-        setConfirmation(null);
-        setEmployee(null);
-        setPhase("scanning");
-      }, 2000);
-    } catch (err) {
-      if (isKioskSessionInvalidError(err)) {
-        backToPairing(kioskErrorMessage(err));
-        return;
-      }
-      setScanMessage(kioskErrorMessage(err));
-      setEmployee(null);
-      setPhase("scanning");
-      setTimeout(() => setScanMessage(null), 2500);
-    } finally {
-      setRecordingAction(null);
-    }
   }
 
   if (phase === "loading") {
@@ -226,24 +212,33 @@ export default function KioskPage() {
     );
   }
 
-  if (phase === "ready") {
+  if (phase === "select-action") {
     return (
       <main className="kiosk kiosk-center">
         <div className="kiosk-pair-card">
           <Icon name="qr" size={32} />
-          <h1>Ready to scan</h1>
-          <p className="kiosk-muted">{session?.deviceLabel ?? "This device"} is paired. Start scanning to begin recording attendance.</p>
-          <button className="kiosk-primary-button" onClick={() => setPhase("scanning")}>Start scanning</button>
+          <h1>What are you recording?</h1>
+          <p className="kiosk-muted">Choose an action, then scan each employee's code.</p>
+          <div className="kiosk-action-grid">
+            {actionOrder.map((action) => (
+              <button key={action} className="kiosk-secondary-button kiosk-action-tile" onClick={() => chooseAction(action)}>
+                {eventLabels[action]}
+              </button>
+            ))}
+          </div>
         </div>
       </main>
     );
   }
 
-  if (phase === "scanning") {
+  if (phase === "scanning" && selectedAction) {
     return (
       <main className="kiosk kiosk-scanner">
         <div className="kiosk-scanner-video-wrap">
           <video ref={videoRef} className="kiosk-scanner-video" muted playsInline />
+          <button className="kiosk-mode-badge" onClick={() => setPhase("select-action")}>
+            {eventLabels[selectedAction]} <Icon name="swap" size={14} />
+          </button>
           {!cameraError && (
             <div className="kiosk-scanner-caption">
               <Icon name="qr" size={22} /> Point the camera at your QR code
@@ -262,7 +257,12 @@ export default function KioskPage() {
               <p>No camera was found on this device. Use the manual entry below instead.</p>
             </div>
           )}
-          {scanMessage && <div className="kiosk-toast">{scanMessage}</div>}
+          {scanMessage && <div className="kiosk-toast kiosk-toast-error">{scanMessage}</div>}
+          {successMessage && (
+            <div className="kiosk-toast kiosk-toast-success">
+              <Icon name="check" size={16} /> {successMessage}
+            </div>
+          )}
         </div>
         <div className="kiosk-manual">
           <button className="kiosk-text-button" onClick={() => setManualEntryOpen((v) => !v)}>
@@ -273,44 +273,6 @@ export default function KioskPage() {
               <input value={manualToken} onChange={(e) => setManualToken(e.target.value)} placeholder="Paste attendance code" />
               <button className="kiosk-secondary-button" type="submit">Submit</button>
             </form>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  if (phase === "identified" && employee) {
-    const [primary, ...rest] = employee.validActions;
-    return (
-      <main className="kiosk kiosk-center">
-        <div className="kiosk-identified-card">
-          {confirmation ? (
-            <>
-              <Icon name="check" size={40} />
-              <p className="kiosk-confirmation">{confirmation}</p>
-            </>
-          ) : (
-            <>
-              <h1>{employee.fullName}</h1>
-              <p className="kiosk-muted">{employee.employeeCode} · {stateLabels[employee.state]}</p>
-              {primary && (
-                <button className="kiosk-primary-button kiosk-action-primary" disabled={recordingAction !== null} onClick={() => handleAction(primary)}>
-                  {recordingAction === primary ? "Recording…" : eventLabels[primary]}
-                </button>
-              )}
-              {rest.length > 0 && (
-                <div className="kiosk-secondary-actions">
-                  {rest.map((action) => (
-                    <button key={action} className="kiosk-secondary-button" disabled={recordingAction !== null} onClick={() => handleAction(action)}>
-                      {recordingAction === action ? "Recording…" : eventLabels[action]}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button className="kiosk-secondary-button kiosk-scan-again-button" onClick={() => setPhase("scanning")}>
-                <Icon name="qr" size={17} /> Not you? Scan again
-              </button>
-            </>
           )}
         </div>
       </main>

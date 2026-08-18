@@ -27,8 +27,7 @@
 
 .kiosk-muted { color: var(--kiosk-muted); }
 
-.kiosk-pair-card,
-.kiosk-identified-card {
+.kiosk-pair-card {
   width: 100%;
   max-width: 420px;
   text-align: center;
@@ -38,8 +37,7 @@
   gap: 14px;
 }
 
-.kiosk-pair-card h1,
-.kiosk-identified-card h1 {
+.kiosk-pair-card h1 {
   font-size: 32px;
   margin: 0;
 }
@@ -78,8 +76,6 @@
 }
 .kiosk-primary-button:disabled { opacity: 0.5; }
 
-.kiosk-action-primary { min-height: 120px; font-size: 24px; }
-
 .kiosk-secondary-button {
   padding: 16px;
   font-size: 16px;
@@ -91,22 +87,29 @@
 }
 .kiosk-secondary-button:disabled { opacity: 0.5; }
 
-.kiosk-secondary-actions {
+.kiosk-action-grid {
   width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-}
-.kiosk-secondary-actions .kiosk-secondary-button { flex: 1 1 auto; }
-
-.kiosk-scan-again-button {
-  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin-top: 8px;
+}
+.kiosk-action-tile { padding: 24px 12px; font-size: 18px; }
+
+.kiosk-mode-badge {
+  position: absolute;
+  top: 24px;
+  right: 24px;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
+  border: 0;
+  background: rgba(11, 14, 33, 0.7);
+  color: var(--kiosk-ink);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .kiosk-text-button {
@@ -139,12 +142,6 @@
   border-radius: 12px;
   font-size: 14px;
   text-align: left;
-}
-
-.kiosk-confirmation {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--kiosk-success);
 }
 
 .kiosk-scanner {
@@ -200,11 +197,17 @@
   top: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(184, 15, 57, 0.9);
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 15px;
+  max-width: 80%;
+  text-align: center;
 }
+.kiosk-toast-error { background: rgba(184, 15, 57, 0.9); }
+.kiosk-toast-success { background: rgba(51, 192, 125, 0.92); color: #06301b; font-weight: 600; }
 
 .kiosk-manual {
   padding: 12px 20px 20px;
