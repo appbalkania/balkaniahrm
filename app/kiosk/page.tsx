@@ -18,12 +18,12 @@ import {
 import type { AttendanceEventType, AttendanceState } from "../../lib/domain";
 
 const eventLabels: Record<AttendanceEventType, string> = {
-  clock_in: "Clock in",
-  clock_out: "Clock out",
-  break_start: "Start break",
-  break_end: "End break",
-  lunch_start: "Start lunch",
-  lunch_end: "End lunch",
+  clock_in: "🟢 Clock in",
+  clock_out: "🔴 Clock out",
+  break_start: "☕ Start break",
+  break_end: "▶️ End break",
+  lunch_start: "🍽️ Start lunch",
+  lunch_end: "▶️ End lunch",
 };
 
 const actionOrder: AttendanceEventType[] = ["clock_in", "clock_out", "break_start", "break_end", "lunch_start", "lunch_end"];
