@@ -45,9 +45,13 @@ export async function listEmployees(): Promise<AdminEmployee[]> {
 export interface CreateEmployeeInput {
   fullName: string;
   email: string;
-  employeeCode: string;
   role: string;
   teamId?: string | null;
+  ppsNumber?: string;
+  dateOfBirth?: string;
+  phoneNumber?: string;
+  address?: string;
+  placeOfBirth?: string;
 }
 
 export async function createEmployee(input: CreateEmployeeInput): Promise<AdminEmployee> {
@@ -55,15 +59,60 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
     body: {
       fullName: input.fullName,
       email: input.email,
-      employeeCode: input.employeeCode,
       role: input.role,
       teamId: input.teamId || null,
       redirectTo: `${window.location.origin}/welcome`,
+      ppsNumber: input.ppsNumber || undefined,
+      dateOfBirth: input.dateOfBirth || undefined,
+      phoneNumber: input.phoneNumber || undefined,
+      address: input.address || undefined,
+      placeOfBirth: input.placeOfBirth || undefined,
     },
   });
   if (error) return unwrapFunctionError(error);
   if (data?.error) throw new Error(data.error);
   return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null };
+}
+
+export interface EmployeeDetails {
+  ppsNumber: string | null;
+  dateOfBirth: string | null;
+  phoneNumber: string | null;
+  address: string | null;
+  placeOfBirth: string | null;
+}
+
+export async function getEmployeeDetails(employeeId: string): Promise<EmployeeDetails> {
+  const { data, error } = await client()
+    .from("employee_details")
+    .select("pps_number,date_of_birth,phone_number,address,place_of_birth")
+    .eq("employee_id", employeeId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    ppsNumber: data?.pps_number ?? null,
+    dateOfBirth: data?.date_of_birth ?? null,
+    phoneNumber: data?.phone_number ?? null,
+    address: data?.address ?? null,
+    placeOfBirth: data?.place_of_birth ?? null,
+  };
+}
+
+export async function upsertEmployeeDetails(employeeId: string, details: EmployeeDetails): Promise<void> {
+  const { error } = await client()
+    .from("employee_details")
+    .upsert(
+      {
+        employee_id: employeeId,
+        pps_number: details.ppsNumber || null,
+        date_of_birth: details.dateOfBirth || null,
+        phone_number: details.phoneNumber || null,
+        address: details.address || null,
+        place_of_birth: details.placeOfBirth || null,
+      },
+      { onConflict: "employee_id" },
+    );
+  if (error) throw error;
 }
 
 export interface UpdateEmployeeInput {

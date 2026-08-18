@@ -54,7 +54,19 @@ Deno.serve(async (req) => {
     return json({ error: "Only HR administrators can add employees." }, 403);
   }
 
-  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; teamId?: string | null; redirectTo?: string };
+  let body: {
+    fullName?: string;
+    email?: string;
+    employeeCode?: string;
+    role?: string;
+    teamId?: string | null;
+    redirectTo?: string;
+    ppsNumber?: string;
+    dateOfBirth?: string;
+    phoneNumber?: string;
+    address?: string;
+    placeOfBirth?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -63,13 +75,14 @@ Deno.serve(async (req) => {
 
   const fullName = body.fullName?.trim();
   const email = body.email?.trim().toLowerCase();
-  const employeeCode = body.employeeCode?.trim();
+  // Optional -- omitted entirely from the insert below when blank so the
+  // profiles_assign_employee_code trigger generates one.
+  const employeeCode = body.employeeCode?.trim() || null;
   const role = body.role?.trim() ?? "employee";
   const teamId = body.teamId?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
   if (!email) return json({ error: "Email is required." }, 400);
-  if (!employeeCode) return json({ error: "Employee code is required." }, 400);
   if (!VALID_ROLES.includes(role)) return json({ error: "Invalid role." }, 400);
 
   if (teamId) {
@@ -96,6 +109,23 @@ Deno.serve(async (req) => {
     // Roll back the invited auth user so a failed profile insert doesn't leave an orphan account.
     await adminClient.auth.admin.deleteUser(invited.user.id);
     return json({ error: profileError.message }, 400);
+  }
+
+  const hasDetails = body.ppsNumber || body.dateOfBirth || body.phoneNumber || body.address || body.placeOfBirth;
+  if (hasDetails) {
+    const { error: detailsError } = await adminClient.from("employee_details").insert({
+      employee_id: invited.user.id,
+      pps_number: body.ppsNumber?.trim() || null,
+      date_of_birth: body.dateOfBirth || null,
+      phone_number: body.phoneNumber?.trim() || null,
+      address: body.address?.trim() || null,
+      place_of_birth: body.placeOfBirth?.trim() || null,
+    });
+    if (detailsError) {
+      // Cascades profiles too.
+      await adminClient.auth.admin.deleteUser(invited.user.id);
+      return json({ error: detailsError.message }, 400);
+    }
   }
 
   return json({
