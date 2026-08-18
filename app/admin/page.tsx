@@ -1156,7 +1156,14 @@ function Timesheets({ setNotice }: NoticeProps) {
       downloadCsv(
         `timesheet-${startDate}-to-${endDate}.csv`,
         ["Employee", "Employee code", "Date", "Clock in", "Clock out", "Hours"],
-        rows.map((row) => [row.employeeName, row.employeeCode, row.workDate, row.clockedInAt ?? "", row.clockedOutAt ?? "", hoursWorked(row).toFixed(2)]),
+        rows.map((row) => [
+          row.employeeName,
+          row.employeeCode,
+          row.workDate,
+          row.clockedInAt ? formatTime(row.clockedInAt) : "",
+          row.clockedOutAt ? formatTime(row.clockedOutAt) : "",
+          Math.round(hoursWorked(row) * 100) / 100,
+        ]),
       );
     } finally {
       setExporting(false);
