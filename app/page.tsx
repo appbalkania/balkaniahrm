@@ -37,20 +37,20 @@ type AuthStatus = "loading" | "signedOut" | "needsSetup" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
 const stateText: Record<AttendanceState, string> = {
-  not_started: "Ready to start your day",
-  working: "You're currently working",
-  on_break: "First break is active",
-  on_lunch: "Lunch break is active",
-  complete: "Workday complete",
+  not_started: "⏳ Ready to start your day",
+  working: "🟢 You're currently working",
+  on_break: "☕ First break is active",
+  on_lunch: "🍽️ Lunch break is active",
+  complete: "✅ Workday complete",
 };
 
 const actionMap: Record<AttendanceAction, [string, AttendanceEventType]> = {
-  clockIn: ["Clock in", "clock_in"],
-  clockOut: ["Clock out", "clock_out"],
-  breakIn: ["First break started", "break_start"],
-  breakOut: ["First break ended", "break_end"],
-  lunchIn: ["Lunch started", "lunch_start"],
-  lunchOut: ["Lunch ended", "lunch_end"],
+  clockIn: ["🟢 Clock in", "clock_in"],
+  clockOut: ["🔴 Clock out", "clock_out"],
+  breakIn: ["☕ First break started", "break_start"],
+  breakOut: ["▶️ First break ended", "break_end"],
+  lunchIn: ["🍽️ Lunch started", "lunch_start"],
+  lunchOut: ["▶️ Lunch ended", "lunch_end"],
 };
 
 export default function Home() {
@@ -691,12 +691,12 @@ function CodeScreen({
         </p>
       </section>
       <div className="action-grid">
-        <Action label="Clock in" enabled={state === "not_started"} busy={busyAction === "clockIn"} onClick={() => onAction("clockIn")} />
-        <Action label="Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
-        <Action label="First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
-        <Action label="First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
-        <Action label="Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
-        <Action label="Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
+        <Action label="🟢 Clock in" enabled={state === "not_started"} busy={busyAction === "clockIn"} onClick={() => onAction("clockIn")} />
+        <Action label="🔴 Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
+        <Action label="☕ First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
+        <Action label="▶️ First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
+        <Action label="🍽️ Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
+        <Action label="▶️ Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
       </div>
     </>
   );
@@ -970,7 +970,14 @@ function formatTime(value: string) {
 }
 
 function eventLabel(type: AttendanceEventType) {
-  return { clock_in: "Clocked in", clock_out: "Clocked out", break_start: "First break started", break_end: "First break ended", lunch_start: "Lunch started", lunch_end: "Lunch ended" }[type];
+  return {
+    clock_in: "🟢 Clocked in",
+    clock_out: "🔴 Clocked out",
+    break_start: "☕ First break started",
+    break_end: "▶️ First break ended",
+    lunch_start: "🍽️ Lunch started",
+    lunch_end: "▶️ Lunch ended",
+  }[type];
 }
 
 function averageTimes(sessions: MonthSessionSummary[]) {

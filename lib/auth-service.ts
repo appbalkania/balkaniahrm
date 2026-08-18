@@ -13,6 +13,13 @@ export async function signInWithPassword(email: string, password: string) {
   return data.session;
 }
 
+export async function setPassword(password: string): Promise<void> {
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export async function signOut() {
   const supabase = createSupabaseBrowserClient();
   if (!supabase) return;

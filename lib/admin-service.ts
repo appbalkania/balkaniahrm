@@ -58,6 +58,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       employeeCode: input.employeeCode,
       role: input.role,
       teamId: input.teamId || null,
+      redirectTo: `${window.location.origin}/welcome`,
     },
   });
   if (error) return unwrapFunctionError(error);

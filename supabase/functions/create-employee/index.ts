@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     return json({ error: "Only HR administrators can add employees." }, 403);
   }
 
-  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; teamId?: string | null };
+  let body: { fullName?: string; email?: string; employeeCode?: string; role?: string; teamId?: string | null; redirectTo?: string };
   try {
     body = await req.json();
   } catch {
@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email);
+  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: body.redirectTo || undefined,
+  });
   if (inviteError || !invited.user) {
     return json({ error: inviteError?.message ?? "Couldn't send the invite." }, 400);
   }

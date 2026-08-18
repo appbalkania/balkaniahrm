@@ -945,12 +945,12 @@ function Attendance({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean
 }
 
 const attendanceEventOptions: Array<[AttendanceEventType, string]> = [
-  ["clock_in", "Clock in"],
-  ["clock_out", "Clock out"],
-  ["break_start", "First break start"],
-  ["break_end", "First break end"],
-  ["lunch_start", "Lunch start"],
-  ["lunch_end", "Lunch end"],
+  ["clock_in", "🟢 Clock in"],
+  ["clock_out", "🔴 Clock out"],
+  ["break_start", "☕ First break start"],
+  ["break_end", "▶️ First break end"],
+  ["lunch_start", "🍽️ Lunch start"],
+  ["lunch_end", "▶️ Lunch end"],
 ];
 
 function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; onRecorded: (employeeName: string) => void }) {
@@ -1933,7 +1933,7 @@ function initials(name: string) {
 }
 
 function stateLabel(state: string) {
-  return { not_started: "Not started", working: "Working", on_break: "On break", on_lunch: "On lunch", complete: "Complete" }[state] ?? state;
+  return { not_started: "⏳ Not started", working: "🟢 Working", on_break: "☕ On break", on_lunch: "🍽️ On lunch", complete: "✅ Complete" }[state] ?? state;
 }
 
 function formatTime(value: string) {
