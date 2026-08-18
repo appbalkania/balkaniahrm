@@ -20,6 +20,17 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export interface Holiday {
+  date: string;
+  name: string;
+}
+
+export async function listHolidays(): Promise<Holiday[]> {
+  const { data, error } = await client().from("holidays").select("holiday_date,name").order("holiday_date");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ date: row.holiday_date, name: row.name }));
+}
+
 export async function issueQrToken(): Promise<{ token: string; expiresAt: string }> {
   const { data, error } = await client().rpc("issue_qr_token");
   if (error) throw error;

@@ -9,11 +9,14 @@ import { recordAttendance } from "../../lib/attendance-service";
 import { downloadCsv } from "../../lib/csv";
 import type { AttendanceEventType, Profile } from "../../lib/domain";
 import {
+  addHoliday,
   createEmployee,
   createTeam,
   deleteEmployee,
+  deleteHoliday,
   getDashboardStats,
   issueDisciplinaryAction,
+  listAdminHolidays,
   listAttendanceDevices,
   listAttendanceSessions,
   listDisciplinaryActions,
@@ -22,10 +25,12 @@ import {
   listManagers,
   listPendingLeaveRequests,
   listTeams,
+  listTimesheet,
   listWorkSchedules,
   regenerateDevicePin,
   registerDevice,
   reviewLeaveRequest,
+  seedBankHolidays,
   setDeviceActive,
   setLeaveEntitlement,
   updateEmployee,
@@ -34,10 +39,12 @@ import {
   type AdminDevice,
   type AdminDisciplinaryAction,
   type AdminEmployee,
+  type AdminHoliday,
   type AdminLeaveBalance,
   type AdminLeaveRequest,
   type AdminManagerOption,
   type AdminTeam,
+  type AdminTimesheetRow,
   type AdminWorkSchedule,
   type DashboardStats,
   type DisciplinarySeverity,
@@ -53,10 +60,12 @@ type Module =
   | "training"
   | "recruitment"
   | "leaves"
+  | "holidays"
   | "disciplinary"
   | "performance"
   | "payroll"
   | "attendance"
+  | "timesheets"
   | "schedules"
   | "devices"
   | "assets"
@@ -83,6 +92,7 @@ const moduleGroups: Array<{ label: string; items: ModuleEntry[] }> = [
     items: [
       ["recruitment", "Recruitment", "userPlus"],
       ["leaves", "Leave management", "calendar"],
+      ["holidays", "Bank holidays", "calendar"],
       ["disciplinary", "Disciplinary", "warning"],
       ["performance", "Performance Review", "chart"],
       ["payroll", "Payroll", "creditCard"],
@@ -92,6 +102,7 @@ const moduleGroups: Array<{ label: string; items: ModuleEntry[] }> = [
     label: "OPERATIONS",
     items: [
       ["attendance", "Attendance", "clock"],
+      ["timesheets", "Timesheets", "chart"],
       ["schedules", "Work schedules", "swap"],
       ["devices", "Kiosk devices", "device"],
       ["assets", "Asset Management", "briefcase"],
@@ -221,7 +232,7 @@ function AdminLogin({ configured }: { configured: boolean }) {
   );
 }
 
-const MANAGER_MODULES: Module[] = ["attendance", "leaves", "disciplinary"];
+const MANAGER_MODULES: Module[] = ["attendance", "timesheets", "leaves", "disciplinary"];
 
 function AdminShell({ profile }: { profile: Profile }) {
   const isManager = profile.role === "manager";
@@ -292,7 +303,9 @@ function AdminShell({ profile }: { profile: Profile }) {
           <EmptyPanel icon="userPlus" title="Recruitment" note="Job postings and candidate pipelines are coming in a later release." />
         )}
         {module === "attendance" && <Attendance setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
+        {module === "timesheets" && <Timesheets setNotice={setNotice} />}
         {module === "leaves" && <Leaves setNotice={setNotice} />}
+        {module === "holidays" && <Holidays setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} />}
         {module === "performance" && (
           <EmptyPanel icon="chart" title="Performance Review" note="Goals, reviews, and feedback cycles are coming in a later release." />
@@ -1009,6 +1022,123 @@ function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; o
   );
 }
 
+function hoursWorked(row: AdminTimesheetRow): number {
+  if (!row.clockedInAt) return 0;
+  const end = row.clockedOutAt ? new Date(row.clockedOutAt) : new Date();
+  let ms = end.getTime() - new Date(row.clockedInAt).getTime();
+  if (row.firstBreakStartedAt && row.firstBreakEndedAt) ms -= new Date(row.firstBreakEndedAt).getTime() - new Date(row.firstBreakStartedAt).getTime();
+  if (row.lunchStartedAt && row.lunchEndedAt) ms -= new Date(row.lunchEndedAt).getTime() - new Date(row.lunchStartedAt).getTime();
+  return Math.max(0, ms / 3600000);
+}
+
+interface EmployeeTimesheetSummary {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  days: number;
+  hours: number;
+}
+
+function Timesheets({ setNotice }: NoticeProps) {
+  const now = new Date();
+  const [startDate, setStartDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(() => now.toISOString().slice(0, 10));
+  const [rows, setRows] = useState<AdminTimesheetRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  function load() {
+    setRows(null);
+    listTimesheet(startDate, endDate)
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load the timesheet."));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
+  const summaries: EmployeeTimesheetSummary[] = [];
+  if (rows) {
+    const byEmployee = new Map<string, EmployeeTimesheetSummary>();
+    for (const row of rows) {
+      const existing = byEmployee.get(row.employeeId);
+      const hours = hoursWorked(row);
+      if (existing) {
+        existing.days += 1;
+        existing.hours += hours;
+      } else {
+        byEmployee.set(row.employeeId, { employeeId: row.employeeId, employeeName: row.employeeName, employeeCode: row.employeeCode, days: 1, hours });
+      }
+    }
+    summaries.push(...Array.from(byEmployee.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName)));
+  }
+  const totalHours = summaries.reduce((sum, s) => sum + s.hours, 0);
+
+  function handleExport() {
+    if (!rows || rows.length === 0) {
+      setNotice("No timesheet records to export for this range.");
+      return;
+    }
+    setExporting(true);
+    try {
+      downloadCsv(
+        `timesheet-${startDate}-to-${endDate}.csv`,
+        ["Employee", "Employee code", "Date", "Clock in", "Clock out", "Hours"],
+        rows.map((row) => [row.employeeName, row.employeeCode, row.workDate, row.clockedInAt ?? "", row.clockedOutAt ?? "", hoursWorked(row).toFixed(2)]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="outline-button" onClick={handleExport} disabled={exporting}>
+          <Icon name="download" size={15} /> {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+      </div>
+      <div className="timesheet-range">
+        <label>
+          From
+          <input type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
+        </label>
+        <label>
+          To
+          <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
+        </label>
+      </div>
+      <div className="admin-stats">
+        <Stat label="Employees" value={String(summaries.length)} note="In range" />
+        <Stat label="Total hours" value={totalHours.toFixed(1)} note="All employees" />
+        <Stat label="Avg. hours" value={summaries.length ? (totalHours / summaries.length).toFixed(1) : "0"} note="Per employee" />
+      </div>
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : summaries.length === 0 ? (
+        <EmptyPanel icon="chart" title="No attendance in this range" note="Adjust the date range to see recorded hours." />
+      ) : (
+        <section className="panel">
+          <div className="panel-title"><h2>Timesheet overview</h2><span className="filter">{formatDate(startDate)} – {formatDate(endDate)}</span></div>
+          <div className="table-head"><b>Employee</b><b>Employee code</b><b>Days worked</b><b>Total hours</b></div>
+          {summaries.map((summary) => (
+            <div className="table-row" key={summary.employeeId}>
+              <span>{summary.employeeName}</span>
+              <span>{summary.employeeCode}</span>
+              <span>{summary.days}</span>
+              <span>{summary.hours.toFixed(1)}h</span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
 function Leaves({ setNotice }: NoticeProps) {
   const [view, setView] = useState<"requests" | "entitlements">("requests");
 
@@ -1371,6 +1501,143 @@ function IssueDisciplinaryModal({ onClose, onIssued }: { onClose: () => void; on
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
             <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Issue action"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function Holidays({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminHoliday[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+
+  function load() {
+    listAdminHolidays()
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load holidays."));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleSeedNextYear() {
+    setSeeding(true);
+    try {
+      const nextYear = new Date().getFullYear() + 1;
+      await seedBankHolidays(nextYear);
+      setNotice(`${nextYear} bank holidays seeded.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't seed next year's holidays.");
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  async function handleDelete(holiday: AdminHoliday) {
+    setBusyId(holiday.id);
+    try {
+      await deleteHoliday(holiday.id);
+      setNotice(`${holiday.name} removed.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't remove the holiday.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="outline-button" onClick={handleSeedNextYear} disabled={seeding}>
+          <Icon name="calendar" size={15} /> {seeding ? "Seeding…" : `Seed ${new Date().getFullYear() + 1}`}
+        </button>
+        <button className="primary-admin" onClick={() => setShowModal(true)}><Icon name="plus" size={15} /> Add holiday</button>
+      </div>
+      {showModal && (
+        <AddHolidayModal
+          onClose={() => setShowModal(false)}
+          onAdded={() => {
+            setShowModal(false);
+            setNotice("Holiday added.");
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="calendar" title="No holidays yet" note="Add a holiday, or seed the standard Irish bank holiday calendar." />
+      ) : (
+        <section className="panel">
+          <div className="table-head"><b>Date</b><b>Name</b><b></b><b></b></div>
+          {rows.map((row) => (
+            <div className="table-row" key={row.id}>
+              <span className={row.date < today ? "muted" : undefined}>{formatDate(row.date)}</span>
+              <span>{row.name}</span>
+              <span />
+              <span className="row-actions">
+                <button className="outline-button" disabled={busyId === row.id} onClick={() => handleDelete(row)}>
+                  <Icon name="trash" size={14} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function AddHolidayModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [date, setDate] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await addHoliday(date, name);
+      onAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't add the holiday.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Add holiday</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Date
+            <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} placeholder="e.g. Company closure day" />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Adding…" : "Add holiday"}</button>
           </div>
         </form>
       </div>

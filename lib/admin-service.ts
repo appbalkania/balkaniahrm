@@ -402,3 +402,72 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const attendanceRate = employees.length ? Math.round((sessions.length / employees.length) * 100) : 0;
   return { totalEmployees: employees.length, workingNow, pendingLeave: pending.length, attendanceRate };
 }
+
+export interface AdminHoliday {
+  id: string;
+  date: string;
+  name: string;
+}
+
+export async function listAdminHolidays(): Promise<AdminHoliday[]> {
+  const { data, error } = await client().from("holidays").select("id,holiday_date,name").order("holiday_date");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ id: row.id, date: row.holiday_date, name: row.name }));
+}
+
+export async function addHoliday(date: string, name: string): Promise<void> {
+  const { error } = await client().from("holidays").insert({ holiday_date: date, name });
+  if (error) throw error;
+}
+
+export async function deleteHoliday(id: string): Promise<void> {
+  const { error } = await client().from("holidays").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function seedBankHolidays(year: number): Promise<void> {
+  const { error } = await client().rpc("seed_irish_bank_holidays", { p_year: year });
+  if (error) throw error;
+}
+
+export interface AdminTimesheetRow {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  workDate: string;
+  state: string;
+  clockedInAt: string | null;
+  clockedOutAt: string | null;
+  firstBreakStartedAt: string | null;
+  firstBreakEndedAt: string | null;
+  lunchStartedAt: string | null;
+  lunchEndedAt: string | null;
+}
+
+export async function listTimesheet(startDate: string, endDate: string): Promise<AdminTimesheetRow[]> {
+  const { data, error } = await client()
+    .from("attendance_sessions")
+    .select(
+      "employee_id,work_date,state,clocked_in_at,clocked_out_at,first_break_started_at,first_break_ended_at,lunch_started_at,lunch_ended_at,profiles!attendance_sessions_employee_id_fkey(full_name,employee_code)",
+    )
+    .gte("work_date", startDate)
+    .lte("work_date", endDate)
+    .order("work_date");
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      employeeId: row.employee_id,
+      employeeName: profile?.full_name ?? "Unknown",
+      employeeCode: profile?.employee_code ?? "",
+      workDate: row.work_date,
+      state: row.state,
+      clockedInAt: row.clocked_in_at,
+      clockedOutAt: row.clocked_out_at,
+      firstBreakStartedAt: row.first_break_started_at,
+      firstBreakEndedAt: row.first_break_ended_at,
+      lunchStartedAt: row.lunch_started_at,
+      lunchEndedAt: row.lunch_ended_at,
+    };
+  });
+}
