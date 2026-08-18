@@ -294,7 +294,9 @@ export default function KioskPage() {
                   ))}
                 </div>
               )}
-              <button className="kiosk-text-button" onClick={() => setPhase("scanning")}>Not you? Scan again</button>
+              <button className="kiosk-secondary-button kiosk-scan-again-button" onClick={() => setPhase("scanning")}>
+                <Icon name="qr" size={17} /> Not you? Scan again
+              </button>
             </>
           )}
         </div>
