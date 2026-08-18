@@ -1,0 +1,219 @@
+:root {
+  --kiosk-navy: #141937;
+  --kiosk-navy-deep: #0b0e21;
+  --kiosk-coral: #eb1948;
+  --kiosk-coral-dark: #b80f39;
+  --kiosk-ink: #f4f5fb;
+  --kiosk-muted: #9aa1c4;
+  --kiosk-success: #33c07d;
+}
+
+.kiosk {
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--kiosk-navy-deep);
+  color: var(--kiosk-ink);
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.kiosk-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.kiosk-muted { color: var(--kiosk-muted); }
+
+.kiosk-pair-card,
+.kiosk-identified-card {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.kiosk-pair-card h1,
+.kiosk-identified-card h1 {
+  font-size: 32px;
+  margin: 0;
+}
+
+.kiosk-pair-card form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.kiosk-pin-input {
+  width: 100%;
+  font-size: 40px;
+  letter-spacing: 12px;
+  text-align: center;
+  padding: 18px 0;
+  border-radius: 16px;
+  border: 2px solid rgba(244, 245, 251, 0.2);
+  background: rgba(244, 245, 251, 0.06);
+  color: var(--kiosk-ink);
+}
+.kiosk-pin-input:focus { outline: none; border-color: var(--kiosk-coral); }
+
+.kiosk-primary-button {
+  width: 100%;
+  padding: 20px;
+  font-size: 20px;
+  font-weight: 700;
+  border: 0;
+  border-radius: 16px;
+  background: var(--kiosk-coral);
+  color: #fff;
+  min-height: 96px;
+}
+.kiosk-primary-button:disabled { opacity: 0.5; }
+
+.kiosk-action-primary { min-height: 120px; font-size: 24px; }
+
+.kiosk-secondary-button {
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border: 2px solid rgba(244, 245, 251, 0.2);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--kiosk-ink);
+}
+.kiosk-secondary-button:disabled { opacity: 0.5; }
+
+.kiosk-secondary-actions {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+.kiosk-secondary-actions .kiosk-secondary-button { flex: 1 1 auto; }
+
+.kiosk-text-button {
+  border: 0;
+  background: transparent;
+  color: var(--kiosk-muted);
+  font-size: 15px;
+  padding: 10px;
+  text-decoration: underline;
+}
+
+.kiosk-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #ff8a8a;
+  font-size: 14px;
+  margin: 0;
+}
+
+.kiosk-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(184, 15, 57, 0.25);
+  border: 1px solid var(--kiosk-coral-dark);
+  color: var(--kiosk-ink);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.kiosk-confirmation {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--kiosk-success);
+}
+
+.kiosk-scanner {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.kiosk-scanner-video-wrap {
+  position: relative;
+  flex: 1;
+  background: #000;
+  overflow: hidden;
+}
+
+.kiosk-scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kiosk-scanner-caption {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(11, 14, 33, 0.7);
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-size: 16px;
+}
+
+.kiosk-scanner-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+  background: rgba(11, 14, 33, 0.92);
+}
+.kiosk-scanner-overlay p { max-width: 340px; font-size: 17px; }
+.kiosk-scanner-overlay .kiosk-primary-button { max-width: 260px; min-height: 64px; padding: 14px; }
+
+.kiosk-toast {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(184, 15, 57, 0.9);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 15px;
+}
+
+.kiosk-manual {
+  padding: 12px 20px 20px;
+  background: var(--kiosk-navy);
+  text-align: center;
+}
+
+.kiosk-manual-form {
+  display: flex;
+  gap: 10px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.kiosk-manual-form input {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(244, 245, 251, 0.2);
+  background: rgba(244, 245, 251, 0.06);
+  color: var(--kiosk-ink);
+}
