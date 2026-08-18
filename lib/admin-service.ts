@@ -297,10 +297,42 @@ export async function listWorkSchedules(): Promise<AdminWorkSchedule[]> {
   return (data ?? []).map((row) => ({ id: row.id, name: row.name, branchName: row.branch_name, startsAt: row.starts_at, endsAt: row.ends_at, isDefault: row.is_default }));
 }
 
-export async function listAttendanceDevices() {
+export interface AdminDevice {
+  id: string;
+  label: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export async function listAttendanceDevices(): Promise<AdminDevice[]> {
   const { data, error } = await client().from("attendance_devices").select("id,label,active,created_at").order("created_at");
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((row) => ({ id: row.id, label: row.label, active: row.active, createdAt: row.created_at }));
+}
+
+export interface RegisteredDevice {
+  id: string;
+  label: string;
+  pin: string;
+}
+
+export async function registerDevice(label: string): Promise<RegisteredDevice> {
+  const { data, error } = await client().rpc("register_attendance_device", { p_label: label });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { id: row.id, label: row.label, pin: row.pin };
+}
+
+export async function regenerateDevicePin(deviceId: string): Promise<string> {
+  const { data, error } = await client().rpc("regenerate_device_pin", { p_device_id: deviceId });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row.pin;
+}
+
+export async function setDeviceActive(deviceId: string, active: boolean): Promise<void> {
+  const { error } = await client().rpc("set_device_active", { p_device_id: deviceId, p_active: active });
+  if (error) throw error;
 }
 
 export type DisciplinarySeverity = "verbal_warning" | "written_warning" | "final_warning" | "suspension" | "termination_notice";
