@@ -88,6 +88,10 @@
 .module-tabs button.active { background: var(--navy); border-color: var(--navy); color: #fff; }
 
 .toolbar { display: flex; gap: 10px; margin: 22px 0; align-items: center; }
+
+.timesheet-range { display: flex; gap: 16px; margin: -10px 0 22px; }
+.timesheet-range label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: #6b7280; }
+.timesheet-range input { padding: 9px 12px; border: 1px solid #d4dae5; border-radius: 10px; background: #fff; font: inherit; font-size: 13.5px; color: #161a2e; }
 .search-input { flex: 1; max-width: 320px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #d4dae5; border-radius: 10px; background: #fff; color: #9098ab; }
 .search-input input { border: 0; padding: 10px 0; flex: 1; font: inherit; font-size: 13.5px; background: transparent; }
 .search-input input:focus { outline: none; }

@@ -16,7 +16,9 @@ import {
   getTodaySession,
   getWhoIsOnLeaveToday,
   issueQrToken,
+  listHolidays,
   submitLeaveRequest,
+  type Holiday,
   type MonthSessionSummary,
 } from "../lib/employee-service";
 import type {
@@ -30,7 +32,7 @@ import type {
   Profile,
 } from "../lib/domain";
 
-type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents";
+type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
@@ -354,6 +356,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
               <ProfileScreen profile={profile} configured={configured} onDocuments={() => setScreen("documents")} />
             )}
             {screen === "documents" && <DocumentsScreen notes={disciplinaryNotes} onBack={() => setScreen("profile")} />}
+            {screen === "holidays" && <HolidaysScreen onBack={() => setScreen("home")} />}
           </>
         )}
       </section>
@@ -432,7 +435,7 @@ function HomeScreen({
             <Icon name="swap" size={22} />
             <span>Shift swap</span>
           </button>
-          <button onClick={() => onNavigate("leaves")}>
+          <button onClick={() => onNavigate("holidays")}>
             <Icon name="calendar" size={22} />
             <span>Holidays</span>
           </button>
@@ -804,6 +807,52 @@ function DocumentsScreen({ notes, onBack }: { notes: DisciplinaryNote[]; onBack:
           <Icon name="archive" size={44} className="empty-icon" />
           <h2>No documents</h2>
           <p className="muted">Notices and records issued to you will appear here.</p>
+        </section>
+      )}
+    </>
+  );
+}
+
+function HolidaysScreen({ onBack }: { onBack: () => void }) {
+  const [holidays, setHolidays] = useState<Holiday[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    listHolidays()
+      .then(setHolidays)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load holidays."));
+  }, []);
+
+  return (
+    <>
+      <button className="text-button back" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} /> Back
+      </button>
+      <h1>Bank holidays</h1>
+      <p className="muted">Irish public holidays.</p>
+      {error ? (
+        <div className="notice">
+          <Icon name="warning" size={16} /> {error}
+        </div>
+      ) : !holidays ? (
+        <p className="muted small">Loading…</p>
+      ) : holidays.length ? (
+        <ul className="leave-list">
+          {holidays.map((holiday) => (
+            <li key={holiday.date} className={holiday.date < today ? "muted" : undefined}>
+              <div>
+                <b>{holiday.name}</b>
+              </div>
+              <span className="pill">{formatDate(holiday.date)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <section className="empty">
+          <Icon name="calendar" size={44} className="empty-icon" />
+          <h2>No holidays listed</h2>
+          <p className="muted">Ask HR to add the bank holiday calendar.</p>
         </section>
       )}
     </>
