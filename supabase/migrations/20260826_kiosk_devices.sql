@@ -7,7 +7,7 @@
 
 create or replace function public.register_attendance_device(p_label text)
 returns table(id uuid, label text, pin text)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_label text := trim(coalesce(p_label, ''));
   v_pin text;
@@ -33,7 +33,7 @@ grant execute on function public.register_attendance_device(text) to authenticat
 
 create or replace function public.regenerate_device_pin(p_device_id uuid)
 returns table(pin text)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_pin text;
 begin
