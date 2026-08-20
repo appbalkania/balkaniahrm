@@ -432,7 +432,7 @@ function Employees({ setNotice }: NoticeProps) {
   }
 
   async function handleToggleActive(row: AdminEmployee) {
-    if (row.active && !window.confirm(`Deactivate ${row.fullName}? They'll be signed out immediately and won't be able to sign back in until reactivated.`)) return;
+    if (row.active && !window.confirm(`Deactivate ${row.fullName}? They'll be signed out immediately, any open attendance session will be automatically clocked out, and they won't be able to sign back in until reactivated.`)) return;
     setBusyId(row.id);
     try {
       await setEmployeeActive(row.id, !row.active);
