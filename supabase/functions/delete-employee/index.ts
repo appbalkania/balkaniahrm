@@ -64,10 +64,13 @@ Deno.serve(async (req) => {
 
   const { error } = await adminClient.auth.admin.deleteUser(employeeId);
   if (error) {
-    const message = /foreign key constraint/i.test(error.message)
-      ? "Can't delete this employee — they still have attendance, leave, or disciplinary records, or manage a team. Reassign or remove those first."
-      : error.message;
-    return json({ error: message }, 400);
+    // Supabase's admin API often returns a generic "Database error deleting
+    // user" rather than surfacing the underlying constraint, so treat any
+    // failure here as the (overwhelmingly likely) cause: related records.
+    return json(
+      { error: "Can't delete this employee — they still have attendance, leave, or disciplinary records, or manage a team. Use Deactivate instead, or reassign/remove those records first if you specifically need them fully removed." },
+      400,
+    );
   }
 
   return json({ id: employeeId });
