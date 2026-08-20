@@ -1,10 +1,13 @@
-// Supabase Edge Function: delete-employee
+// Supabase Edge Function: purge-employee
 //
-// Deletes an employee's auth.users row, which cascades to their profiles row.
-// Must run server-side because it uses the service-role key to call the Auth
-// admin API — never expose that key to the browser.
+// Permanently deletes an employee AND all their historical records
+// (attendance, leave, disciplinary) plus clears any team/department they
+// manage. This is irreversible and destroys audit history that "Delete"
+// deliberately refuses to touch -- use Deactivate for normal offboarding.
+// Only for genuine cleanup: test data, or an account created by mistake
+// that's since accumulated records.
 //
-// Deploy with: supabase functions deploy delete-employee
+// Deploy with: supabase functions deploy purge-employee
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -48,7 +51,7 @@ Deno.serve(async (req) => {
     .eq("id", caller.id)
     .maybeSingle();
   if (!callerProfile || callerProfile.role !== "hr_admin") {
-    return json({ error: "Only HR administrators can delete employees." }, 403);
+    return json({ error: "Only HR administrators can purge employees." }, 403);
   }
 
   let body: { employeeId?: string };
@@ -60,15 +63,27 @@ Deno.serve(async (req) => {
 
   const employeeId = body.employeeId?.trim();
   if (!employeeId) return json({ error: "employeeId is required." }, 400);
-  if (employeeId === caller.id) return json({ error: "You can't delete your own account." }, 400);
+  if (employeeId === caller.id) return json({ error: "You can't purge your own account." }, 400);
+
+  const cleanupSteps: Array<[string, () => Promise<{ error: { message: string } | null }>]> = [
+    ["attendance events", () => adminClient.from("attendance_events").delete().eq("employee_id", employeeId)],
+    ["attendance sessions", () => adminClient.from("attendance_sessions").delete().eq("employee_id", employeeId)],
+    ["leave requests", () => adminClient.from("leave_requests").delete().eq("employee_id", employeeId)],
+    ["leave balances", () => adminClient.from("leave_balances").delete().eq("employee_id", employeeId)],
+    ["disciplinary records", () => adminClient.from("disciplinary_actions").delete().eq("employee_id", employeeId)],
+    ["team management", () => adminClient.from("teams").update({ manager_id: null }).eq("manager_id", employeeId)],
+    ["department management", () => adminClient.from("departments").update({ manager_id: null }).eq("manager_id", employeeId)],
+  ];
+
+  for (const [label, run] of cleanupSteps) {
+    const { error } = await run();
+    if (error) return json({ error: `Couldn't clear ${label}: ${error.message}` }, 400);
+  }
 
   const { error } = await adminClient.auth.admin.deleteUser(employeeId);
   if (error) {
-    // Supabase's admin API often returns a generic "Database error deleting
-    // user" rather than surfacing the underlying constraint, so treat any
-    // failure here as the (overwhelmingly likely) cause: related records.
     return json(
-      { error: "Can't delete this employee — they still have attendance, leave, or disciplinary records, or manage a team. Use Deactivate instead, or reassign/remove those records first if you specifically need them fully removed." },
+      { error: `Couldn't fully purge this employee: ${error.message}. They may have issued disciplinary actions to other employees, which must be reassigned first.` },
       400,
     );
   }

@@ -28,6 +28,7 @@ import {
   listTeams,
   listTimesheet,
   listWorkSchedules,
+  purgeEmployee,
   regenerateDevicePin,
   registerDevice,
   reviewLeaveRequest,
@@ -459,6 +460,25 @@ function Employees({ setNotice }: NoticeProps) {
     }
   }
 
+  async function handlePurge(row: AdminEmployee) {
+    if (
+      !window.confirm(
+        `Permanently purge ${row.fullName}? This deletes their account AND all attendance, leave, and disciplinary records — unlike Delete, this is not blocked by history. This cannot be undone. Only do this for genuine cleanup (e.g. test data), not for normal offboarding — use Deactivate for that.`,
+      )
+    )
+      return;
+    setBusyId(row.id);
+    try {
+      await purgeEmployee(row.id);
+      setNotice(`${row.fullName} and all their records were purged.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't purge the employee.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} onExport={handleExport} exporting={exporting} />
@@ -505,6 +525,11 @@ function Employees({ setNotice }: NoticeProps) {
               <span>
                 <i className="person-dot">{row.fullName[0]}</i>{row.fullName}
                 {!row.active && <span className="pill">Inactive</span>}
+                {!row.active && (
+                  <button className="purge-link" disabled={busyId === row.id} onClick={() => handlePurge(row)}>
+                    Purge all data
+                  </button>
+                )}
               </span>
               <span>{row.employeeCode}</span>
               <span className="capitalize">{row.role.replace("_", " ")}</span>
