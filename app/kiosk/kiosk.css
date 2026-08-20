@@ -87,14 +87,66 @@
 }
 .kiosk-secondary-button:disabled { opacity: 0.5; }
 
+.kiosk-logo {
+  display: block;
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+}
+
+/* Wider than the pairing card: six tiles need the room on a landscape tablet. */
+.kiosk-action-card { max-width: 720px; }
+
 .kiosk-action-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
   margin-top: 8px;
 }
-.kiosk-action-tile { padding: 24px 12px; font-size: 18px; }
+
+.kiosk-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 26px 12px;
+  min-height: 148px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--kiosk-ink);
+  background: rgba(244, 245, 251, 0.04);
+  border: 2px solid rgba(244, 245, 251, 0.14);
+  border-radius: 18px;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.kiosk-action-tile:active { transform: scale(0.97); }
+
+.kiosk-action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(244, 245, 251, 0.08);
+  color: var(--kiosk-ink);
+}
+
+/* One accent per action type so they're separable at a glance from a distance. */
+.kiosk-action-tile.tone-start .kiosk-action-icon { background: rgba(51, 192, 125, 0.16); color: var(--kiosk-success); }
+.kiosk-action-tile.tone-start { border-color: rgba(51, 192, 125, 0.35); }
+.kiosk-action-tile.tone-stop .kiosk-action-icon { background: rgba(235, 25, 72, 0.16); color: #ff6b8a; }
+.kiosk-action-tile.tone-stop { border-color: rgba(235, 25, 72, 0.38); }
+.kiosk-action-tile.tone-pause .kiosk-action-icon { background: rgba(245, 176, 65, 0.16); color: #f5b041; }
+.kiosk-action-tile.tone-pause { border-color: rgba(245, 176, 65, 0.32); }
+.kiosk-action-tile.tone-resume .kiosk-action-icon { background: rgba(93, 156, 255, 0.16); color: #7fb0ff; }
+.kiosk-action-tile.tone-resume { border-color: rgba(93, 156, 255, 0.32); }
+
+@media (max-width: 700px) {
+  .kiosk-action-grid { grid-template-columns: 1fr 1fr; }
+}
 
 .kiosk-mode-badge {
   position: absolute;
@@ -110,6 +162,20 @@
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
+}
+.kiosk-mode-swap { opacity: 0.6; margin-left: 2px; }
+
+/* Mirrors the mode badge on the opposite corner so the kiosk is identifiable
+   as Balkania while it sits on the scanning screen all day. */
+.kiosk-scanner-logo {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .kiosk-text-button {
