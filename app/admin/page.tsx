@@ -322,7 +322,9 @@ function AdminShell({ profile }: { profile: Profile }) {
         )}
         {module === "attendance" && <Attendance setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "timesheets" && <Timesheets setNotice={setNotice} />}
-        {module === "leaves" && <Leaves setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
+        {module === "leaves" && (
+          <Leaves setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} currentUserId={profile.id} />
+        )}
         {module === "holidays" && <Holidays setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "performance" && (
@@ -1292,7 +1294,7 @@ function Timesheets({ setNotice }: NoticeProps) {
   );
 }
 
-function Leaves({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
+function Leaves({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { isHrAdmin: boolean; currentUserId: string }) {
   const [view, setView] = useState<"requests" | "entitlements">("requests");
 
   return (
@@ -1303,12 +1305,16 @@ function Leaves({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) 
           <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
         </div>
       )}
-      {isHrAdmin && view === "entitlements" ? <LeaveEntitlements setNotice={setNotice} /> : <LeaveRequests setNotice={setNotice} />}
+      {isHrAdmin && view === "entitlements" ? (
+        <LeaveEntitlements setNotice={setNotice} />
+      ) : (
+        <LeaveRequests setNotice={setNotice} isHrAdmin={isHrAdmin} currentUserId={currentUserId} />
+      )}
     </>
   );
 }
 
-function LeaveRequests({ setNotice }: NoticeProps) {
+function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { isHrAdmin: boolean; currentUserId: string }) {
   const [rows, setRows] = useState<AdminLeaveRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1354,21 +1360,28 @@ function LeaveRequests({ setNotice }: NoticeProps) {
       ) : (
         <section className="panel">
           <div className="table-head"><b>Employee</b><b>Leave type</b><b>Dates</b><b>Actions</b></div>
-          {rows.map((row) => (
-            <div className="table-row" key={row.id}>
-              <span>{row.employeeName}</span>
-              <span className="capitalize">{row.leaveType}</span>
-              <span>{formatDate(row.startsOn)} – {formatDate(row.endsOn)}</span>
-              <span className="row-actions">
-                <button className="icon-action approve" disabled={busyId === row.id} onClick={() => decide(row.id, "approved")} aria-label="Approve">
-                  <Icon name="check" size={15} />
-                </button>
-                <button className="icon-action reject" disabled={busyId === row.id} onClick={() => decide(row.id, "rejected")} aria-label="Reject">
-                  <Icon name="x" size={15} />
-                </button>
-              </span>
-            </div>
-          ))}
+          {rows.map((row) => {
+            const isOwnRequest = !isHrAdmin && row.employeeId === currentUserId;
+            return (
+              <div className="table-row" key={row.id}>
+                <span>{row.employeeName}</span>
+                <span className="capitalize">{row.leaveType}</span>
+                <span>{formatDate(row.startsOn)} – {formatDate(row.endsOn)}</span>
+                {isOwnRequest ? (
+                  <span className="pill pending">Awaiting HR approval</span>
+                ) : (
+                  <span className="row-actions">
+                    <button className="icon-action approve" disabled={busyId === row.id} onClick={() => decide(row.id, "approved")} aria-label="Approve">
+                      <Icon name="check" size={15} />
+                    </button>
+                    <button className="icon-action reject" disabled={busyId === row.id} onClick={() => decide(row.id, "rejected")} aria-label="Reject">
+                      <Icon name="x" size={15} />
+                    </button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </section>
       )}
     </>
