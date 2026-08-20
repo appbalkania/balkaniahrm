@@ -448,6 +448,133 @@ async function clearDefaultWorkSchedule(): Promise<void> {
   if (error) throw error;
 }
 
+export type AssetCategory = "laptop" | "phone" | "vehicle" | "tool" | "uniform" | "other";
+export type AssetStatus = "available" | "assigned" | "retired";
+
+export interface AdminAsset {
+  id: string;
+  assetTag: string;
+  name: string;
+  category: AssetCategory;
+  serialNumber: string | null;
+  notes: string | null;
+  status: AssetStatus;
+  holderId: string | null;
+  holderName: string | null;
+  assignedOn: string | null;
+}
+
+export async function listAssets(): Promise<AdminAsset[]> {
+  // The active assignment is fetched separately rather than embedded: PostgREST
+  // can't filter an embedded resource down to just the open row, and an asset
+  // usually has several historical assignments alongside the current one.
+  const [{ data, error }, active, employees] = await Promise.all([
+    client().from("assets").select("id,asset_tag,name,category,serial_number,notes,status").order("asset_tag"),
+    client().from("asset_assignments").select("asset_id,employee_id,assigned_on").is("returned_on", null),
+    listEmployees(),
+  ]);
+  if (error) throw error;
+  if (active.error) throw active.error;
+
+  const nameById = new Map(employees.map((e) => [e.id, e.fullName]));
+  const holderByAsset = new Map((active.data ?? []).map((row) => [row.asset_id, row]));
+
+  return (data ?? []).map((row) => {
+    const holder = holderByAsset.get(row.id);
+    return {
+      id: row.id,
+      assetTag: row.asset_tag,
+      name: row.name,
+      category: row.category,
+      serialNumber: row.serial_number,
+      notes: row.notes,
+      status: row.status,
+      holderId: holder?.employee_id ?? null,
+      holderName: holder ? nameById.get(holder.employee_id) ?? "Unknown" : null,
+      assignedOn: holder?.assigned_on ?? null,
+    };
+  });
+}
+
+export interface CreateAssetInput {
+  assetTag: string;
+  name: string;
+  category: AssetCategory;
+  serialNumber?: string;
+  notes?: string;
+}
+
+export async function createAsset(input: CreateAssetInput): Promise<void> {
+  const { error } = await client().from("assets").insert({
+    asset_tag: input.assetTag.trim(),
+    name: input.name.trim(),
+    category: input.category,
+    serial_number: input.serialNumber?.trim() || null,
+    notes: input.notes?.trim() || null,
+  });
+  if (error) throw error;
+}
+
+export async function setAssetRetired(assetId: string, retired: boolean): Promise<void> {
+  const { error } = await client()
+    .from("assets")
+    .update({ status: retired ? "retired" : "available" })
+    .eq("id", assetId);
+  if (error) throw error;
+}
+
+export async function deleteAsset(assetId: string): Promise<void> {
+  const { error } = await client().from("assets").delete().eq("id", assetId);
+  if (error) throw error;
+}
+
+export async function assignAsset(assetId: string, employeeId: string, notes?: string): Promise<void> {
+  const { error } = await client().rpc("assign_asset", {
+    p_asset_id: assetId,
+    p_employee_id: employeeId,
+    p_notes: notes?.trim() || null,
+  });
+  if (error) throw error;
+}
+
+export async function returnAsset(assetId: string): Promise<void> {
+  const { error } = await client().rpc("return_asset", { p_asset_id: assetId });
+  if (error) throw error;
+}
+
+export interface AssetAssignmentRecord {
+  id: string;
+  assetName: string;
+  assetTag: string;
+  employeeName: string;
+  assignedOn: string;
+  returnedOn: string | null;
+}
+
+export async function listAssetHistory(assetId: string): Promise<AssetAssignmentRecord[]> {
+  const [{ data, error }, employees] = await Promise.all([
+    client()
+      .from("asset_assignments")
+      .select("id,employee_id,assigned_on,returned_on,assets!asset_assignments_asset_id_fkey(name,asset_tag)")
+      .eq("asset_id", assetId)
+      .order("assigned_on", { ascending: false }),
+    listEmployees(),
+  ]);
+  if (error) throw error;
+  const nameById = new Map(employees.map((e) => [e.id, e.fullName]));
+  return (data ?? []).map((row) => {
+    const asset = Array.isArray(row.assets) ? row.assets[0] : row.assets;
+    return {
+      id: row.id,
+      assetName: asset?.name ?? "Unknown",
+      assetTag: asset?.asset_tag ?? "",
+      employeeName: nameById.get(row.employee_id) ?? "Unknown",
+      assignedOn: row.assigned_on,
+      returnedOn: row.returned_on,
+    };
+  });
+}
+
 export interface AdminDevice {
   id: string;
   label: string;

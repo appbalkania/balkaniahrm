@@ -12,9 +12,12 @@ import { downloadCsv } from "../../lib/csv";
 import type { AttendanceEventType, Profile } from "../../lib/domain";
 import {
   addHoliday,
+  assignAsset,
+  createAsset,
   createEmployee,
   createTeam,
   createWorkSchedule,
+  deleteAsset,
   deleteEmployee,
   deleteDisciplinaryAction,
   deleteHoliday,
@@ -23,6 +26,8 @@ import {
   getEmployeeDetails,
   issueDisciplinaryAction,
   listAdminHolidays,
+  listAssetHistory,
+  listAssets,
   listAttendanceDevices,
   listAttendanceSessions,
   listDisciplinaryActions,
@@ -36,16 +41,22 @@ import {
   purgeEmployee,
   regenerateDevicePin,
   registerDevice,
+  returnAsset,
   reviewLeaveRequest,
   seedBankHolidays,
+  setAssetRetired,
   setDeviceActive,
   setEmployeeActive,
   setLeaveEntitlement,
   updateEmployee,
   updateTeam,
   upsertEmployeeDetails,
+  type AdminAsset,
   type AdminAttendanceSession,
   type AdminDevice,
+  type AssetAssignmentRecord,
+  type AssetCategory,
+  type AssetStatus,
   type AdminDisciplinaryAction,
   type AdminEmployee,
   type AdminHoliday,
@@ -339,9 +350,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         )}
         {module === "schedules" && <Schedules setNotice={setNotice} />}
         {module === "devices" && <Devices setNotice={setNotice} />}
-        {module === "assets" && (
-          <EmptyPanel icon="briefcase" title="Asset Management" note="Equipment and asset assignments are coming in a later release." />
-        )}
+        {module === "assets" && <Assets setNotice={setNotice} />}
         {module === "settings" && <Settings setNotice={setNotice} />}
         {module === "integrations" && (
           <EmptyPanel icon="swap" title="Integrations" note="Connect third-party tools once this module is built." />
@@ -2153,6 +2162,362 @@ function CreateShiftModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Creating…" : "Create shift"}</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+const assetCategoryLabels: Record<AssetCategory, string> = {
+  laptop: "Laptop",
+  phone: "Phone",
+  vehicle: "Vehicle",
+  tool: "Tool",
+  uniform: "Uniform",
+  other: "Other",
+};
+
+const assetCategoryIcons: Record<AssetCategory, Parameters<typeof Icon>[0]["name"]> = {
+  laptop: "layout",
+  phone: "device",
+  vehicle: "swap",
+  tool: "settings",
+  uniform: "briefcase",
+  other: "archive",
+};
+
+const assetStatusPill: Record<AssetStatus, string> = {
+  available: "success",
+  assigned: "pending",
+  retired: "",
+};
+
+function Assets({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminAsset[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [assigning, setAssigning] = useState<AdminAsset | null>(null);
+  const [historyFor, setHistoryFor] = useState<AdminAsset | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | AssetStatus>("all");
+
+  function load() {
+    listAssets()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load assets.")));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleReturn(asset: AdminAsset) {
+    setBusyId(asset.id);
+    try {
+      await returnAsset(asset.id);
+      setNotice(`${asset.name} marked as returned.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't record the return."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRetire(asset: AdminAsset) {
+    const retiring = asset.status !== "retired";
+    if (retiring && !window.confirm(`Retire ${asset.name}? It won't be assignable until restored.`)) return;
+    setBusyId(asset.id);
+    try {
+      await setAssetRetired(asset.id, retiring);
+      setNotice(retiring ? `${asset.name} retired.` : `${asset.name} restored to available.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't update the asset."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(asset: AdminAsset) {
+    if (!window.confirm(`Permanently delete ${asset.name} (${asset.assetTag}) and its assignment history?`)) return;
+    setBusyId(asset.id);
+    try {
+      await deleteAsset(asset.id);
+      setNotice(`${asset.name} deleted.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't delete the asset."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const visible = rows?.filter((r) => filter === "all" || r.status === filter) ?? null;
+  const counts = {
+    total: rows?.length ?? 0,
+    assigned: rows?.filter((r) => r.status === "assigned").length ?? 0,
+    available: rows?.filter((r) => r.status === "available").length ?? 0,
+  };
+
+  return (
+    <>
+      <Toolbar action="Add asset" onAction={() => setShowCreate(true)} />
+      {showCreate && (
+        <CreateAssetModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(name) => {
+            setShowCreate(false);
+            setNotice(`Asset "${name}" added.`);
+            load();
+          }}
+        />
+      )}
+      {assigning && (
+        <AssignAssetModal
+          asset={assigning}
+          onClose={() => setAssigning(null)}
+          onAssigned={(employeeName) => {
+            setNotice(`${assigning.name} assigned to ${employeeName}.`);
+            setAssigning(null);
+            load();
+          }}
+        />
+      )}
+      {historyFor && <AssetHistoryModal asset={historyFor} onClose={() => setHistoryFor(null)} />}
+
+      <div className="admin-stats">
+        <Stat label="Total assets" value={String(counts.total)} note="In the register" />
+        <Stat label="Assigned" value={String(counts.assigned)} note="Currently with staff" />
+        <Stat label="Available" value={String(counts.available)} note="Ready to assign" />
+      </div>
+
+      <div className="module-tabs">
+        {(["all", "assigned", "available", "retired"] as const).map((key) => (
+          <button key={key} className={filter === key ? "active" : ""} onClick={() => setFilter(key)}>
+            {key === "all" ? "All" : key.charAt(0).toUpperCase() + key.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : !visible ? (
+        <LoadingPanel />
+      ) : visible.length === 0 ? (
+        <EmptyPanel
+          icon="briefcase"
+          title={filter === "all" ? "No assets yet" : `No ${filter} assets`}
+          note="Add laptops, phones, vehicles, tools, or uniforms to track who holds them."
+        />
+      ) : (
+        <section className="panel">
+          <div className="table-head cols-5"><b>Asset</b><b>Tag</b><b>Assigned to</b><b>Status</b><b>Actions</b></div>
+          {visible.map((asset) => (
+            <div className="table-row cols-5" key={asset.id}>
+              <span className="asset-name">
+                <i className="person-dot"><Icon name={assetCategoryIcons[asset.category]} size={14} /></i>
+                <span>
+                  {asset.name}
+                  <em className="asset-sub">{assetCategoryLabels[asset.category]}{asset.serialNumber ? ` · ${asset.serialNumber}` : ""}</em>
+                </span>
+              </span>
+              <span>{asset.assetTag}</span>
+              <span>{asset.holderName ?? "—"}</span>
+              <span className={`pill ${assetStatusPill[asset.status]}`}>{asset.status}</span>
+              <span className="row-actions">
+                {asset.status === "assigned" ? (
+                  <button className="icon-action approve" disabled={busyId === asset.id} onClick={() => handleReturn(asset)} aria-label={`Mark ${asset.name} returned`} title="Mark returned">
+                    <Icon name="check" size={15} />
+                  </button>
+                ) : (
+                  <button className="icon-action" disabled={busyId === asset.id || asset.status === "retired"} onClick={() => setAssigning(asset)} aria-label={`Assign ${asset.name}`} title="Assign">
+                    <Icon name="userPlus" size={15} />
+                  </button>
+                )}
+                <button className="icon-action" onClick={() => setHistoryFor(asset)} aria-label={`History for ${asset.name}`} title="History">
+                  <Icon name="archive" size={15} />
+                </button>
+                <button className="icon-action" disabled={busyId === asset.id || asset.status === "assigned"} onClick={() => handleRetire(asset)} aria-label={`Retire ${asset.name}`} title={asset.status === "retired" ? "Restore" : "Retire"}>
+                  <Icon name={asset.status === "retired" ? "swap" : "archive"} size={15} />
+                </button>
+                <button className="icon-action reject" disabled={busyId === asset.id || asset.status === "assigned"} onClick={() => handleDelete(asset)} aria-label={`Delete ${asset.name}`} title="Delete">
+                  <Icon name="trash" size={15} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function CreateAssetModal({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
+  const [assetTag, setAssetTag] = useState("");
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<AssetCategory>("laptop");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await createAsset({ assetTag, name, category, serialNumber, notes });
+      onCreated(name);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't add the asset."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Add asset</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Asset tag
+            <input required value={assetTag} onChange={(e) => setAssetTag(e.target.value)} disabled={saving} placeholder="e.g. BAL-LT-014" />
+          </label>
+          <label>
+            Name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} placeholder="e.g. Dell Latitude 5540" />
+          </label>
+          <label>
+            Category
+            <select value={category} onChange={(e) => setCategory(e.target.value as AssetCategory)} disabled={saving}>
+              {(Object.keys(assetCategoryLabels) as AssetCategory[]).map((key) => (
+                <option key={key} value={key}>{assetCategoryLabels[key]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Serial number (optional)
+            <input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Notes (optional)
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} rows={2} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Adding…" : "Add asset"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AssignAssetModal({ asset, onClose, onAssigned }: { asset: AdminAsset; onClose: () => void; onAssigned: (employeeName: string) => void }) {
+  const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listEmployees()
+      .then((data) => setEmployees(data.filter((e) => e.active)))
+      .catch(() => setEmployees([]));
+  }, []);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!employeeId) {
+      setError("Choose an employee.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await assignAsset(asset.id, employeeId, notes);
+      onAssigned(employees.find((e) => e.id === employeeId)?.fullName ?? "employee");
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't assign the asset."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Assign asset</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">{asset.name} · {asset.assetTag}</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Employee
+            <select required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={saving}>
+              <option value="">Select an employee</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.fullName} ({e.employeeCode})</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Notes (optional)
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} rows={2} placeholder="Condition, accessories included…" />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Assigning…" : "Assign"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AssetHistoryModal({ asset, onClose }: { asset: AdminAsset; onClose: () => void }) {
+  const [rows, setRows] = useState<AssetAssignmentRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listAssetHistory(asset.id)
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load the history.")));
+  }, [asset.id]);
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Assignment history</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">{asset.name} · {asset.assetTag}</p>
+        {error ? (
+          <ErrorState message={error} />
+        ) : !rows ? (
+          <LoadingPanel />
+        ) : rows.length === 0 ? (
+          <p className="muted small">This asset has never been assigned.</p>
+        ) : (
+          <div>
+            <div className="table-head"><b>Employee</b><b>From</b><b>To</b></div>
+            {rows.map((row) => (
+              <div className="table-row" key={row.id}>
+                <span>{row.employeeName}</span>
+                <span>{formatDate(row.assignedOn)}</span>
+                <span>{row.returnedOn ? formatDate(row.returnedOn) : <span className="pill pending">Still held</span>}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
