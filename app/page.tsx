@@ -331,7 +331,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     <main className="shell">
       <header className="topbar">
         <div className="brand-row">
-          <img src="/icon.png" alt="" className="brand-mark" />
+          <img src="/icon-white.png" alt="" className="brand-mark" />
           <strong>Balkania</strong>
         </div>
         <button className="icon-button" onClick={() => setScreen("profile")} aria-label="Open profile">
