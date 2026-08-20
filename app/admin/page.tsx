@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import "./admin.css";
 import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../../lib/auth-service";
-import { getMyProfile, submitLeaveRequest } from "../../lib/employee-service";
-import type { LeaveRequestInput } from "../../lib/domain";
+import { getLeaveBalances, getLeaveRequests, getMyProfile, submitLeaveRequest } from "../../lib/employee-service";
+import type { LeaveBalance, LeaveRequestInput, LeaveRequestRecord } from "../../lib/domain";
 import { errorMessage } from "../../lib/errors";
 import { recordAttendance } from "../../lib/attendance-service";
 import { downloadCsv } from "../../lib/csv";
@@ -1334,6 +1334,8 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [myBalance, setMyBalance] = useState<LeaveBalance | null>(null);
+  const [myRequests, setMyRequests] = useState<LeaveRequestRecord[] | null>(null);
 
   async function load() {
     try {
@@ -1344,8 +1346,19 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
     }
   }
 
+  async function loadMine() {
+    try {
+      const [balances, requests] = await Promise.all([getLeaveBalances(), getLeaveRequests()]);
+      setMyBalance(balances.find((b) => b.leaveType === "annual") ?? null);
+      setMyRequests(requests);
+    } catch {
+      setMyRequests([]);
+    }
+  }
+
   useEffect(() => {
     load();
+    loadMine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1372,9 +1385,34 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
             setShowRequestModal(false);
             setNotice(isHrAdmin ? "Leave request submitted." : "Leave request submitted for HR approval.");
             load();
+            loadMine();
           }}
         />
       )}
+      <section className="panel">
+        <div className="panel-title"><h2>My leave</h2></div>
+        <div className="admin-stats">
+          <Stat label="Days earned" value={myBalance ? formatDaysValue(myBalance.earned) : "0"} note={myBalance ? `Of ${formatDaysValue(myBalance.entitlement)} annual` : "No entitlement set"} />
+          <Stat label="Days used" value={myBalance ? formatDaysValue(myBalance.used) : "0"} note="This leave year" />
+          <Stat label="Available" value={myBalance ? formatDaysValue(myBalance.earned - myBalance.used) : "0"} note="To book now" />
+        </div>
+        {myRequests === null ? (
+          <LoadingPanel />
+        ) : myRequests.length === 0 ? (
+          <p className="muted small">No leave requests yet.</p>
+        ) : (
+          <div>
+            <div className="table-head"><b>Leave type</b><b>Dates</b><b>Status</b></div>
+            {myRequests.map((request) => (
+              <div className="table-row" key={request.id}>
+                <span className="capitalize">{request.leaveType}</span>
+                <span>{formatDate(request.startsOn)} – {formatDate(request.endsOn)}</span>
+                <span className={`pill ${leaveStatusClass(request.status)}`}>{request.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       <div className="admin-stats">
         <Stat label="Pending requests" value={String(rows?.length ?? 0)} note="Needs a decision" />
       </div>
@@ -2230,4 +2268,12 @@ function formatTime(value: string) {
 
 function formatDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString([], { day: "2-digit", month: "short" });
+}
+
+function formatDaysValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function leaveStatusClass(status: string) {
+  return { approved: "success", rejected: "danger", pending: "pending", cancelled: "" }[status] ?? "";
 }
