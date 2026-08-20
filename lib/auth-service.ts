@@ -20,6 +20,19 @@ export async function setPassword(password: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const email = userData.user?.email;
+  if (!email) throw new Error("Couldn't verify your account email.");
+  const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (verifyError) throw new Error("Current password is incorrect.");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
 export async function signOut() {
   const supabase = createSupabaseBrowserClient();
   if (!supabase) return;

@@ -322,7 +322,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         )}
         {module === "attendance" && <Attendance setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "timesheets" && <Timesheets setNotice={setNotice} />}
-        {module === "leaves" && <Leaves setNotice={setNotice} />}
+        {module === "leaves" && <Leaves setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "holidays" && <Holidays setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "performance" && (
@@ -1292,16 +1292,18 @@ function Timesheets({ setNotice }: NoticeProps) {
   );
 }
 
-function Leaves({ setNotice }: NoticeProps) {
+function Leaves({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
   const [view, setView] = useState<"requests" | "entitlements">("requests");
 
   return (
     <>
-      <div className="module-tabs">
-        <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Requests</button>
-        <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
-      </div>
-      {view === "requests" ? <LeaveRequests setNotice={setNotice} /> : <LeaveEntitlements setNotice={setNotice} />}
+      {isHrAdmin && (
+        <div className="module-tabs">
+          <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Requests</button>
+          <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
+        </div>
+      )}
+      {isHrAdmin && view === "entitlements" ? <LeaveEntitlements setNotice={setNotice} /> : <LeaveRequests setNotice={setNotice} />}
     </>
   );
 }

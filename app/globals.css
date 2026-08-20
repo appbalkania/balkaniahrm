@@ -301,6 +301,7 @@ h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .login-form .primary-button { margin-top: 20px; }
 
 .form-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 13px; margin: 12px 0 0; }
+.form-success { display: flex; align-items: center; gap: 6px; color: var(--success); font-size: 13px; margin: 12px 0 0; }
 
 @media (min-width: 700px) {
   body { padding: 18px; }
