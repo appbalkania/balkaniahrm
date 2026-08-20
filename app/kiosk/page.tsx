@@ -18,12 +18,23 @@ import {
 import type { AttendanceEventType, AttendanceState } from "../../lib/domain";
 
 const eventLabels: Record<AttendanceEventType, string> = {
-  clock_in: "🟢 Clock in",
-  clock_out: "🔴 Clock out",
-  break_start: "☕ Start break",
-  break_end: "▶️ End break",
-  lunch_start: "🍽️ Start lunch",
-  lunch_end: "▶️ End lunch",
+  clock_in: "Clock in",
+  clock_out: "Clock out",
+  break_start: "Start break",
+  break_end: "End break",
+  lunch_start: "Start lunch",
+  lunch_end: "End lunch",
+};
+
+// Tone drives the tile's accent colour so the six actions are told apart at a
+// glance from across a room, rather than by reading the label.
+const eventIcons: Record<AttendanceEventType, { icon: Parameters<typeof Icon>[0]["name"]; tone: string }> = {
+  clock_in: { icon: "logIn", tone: "start" },
+  clock_out: { icon: "logout", tone: "stop" },
+  break_start: { icon: "coffee", tone: "pause" },
+  break_end: { icon: "play", tone: "resume" },
+  lunch_start: { icon: "utensils", tone: "pause" },
+  lunch_end: { icon: "play", tone: "resume" },
 };
 
 const actionOrder: AttendanceEventType[] = ["clock_in", "clock_out", "break_start", "break_end", "lunch_start", "lunch_end"];
@@ -179,7 +190,7 @@ export default function KioskPage() {
     return (
       <main className="kiosk kiosk-center">
         <div className="kiosk-pair-card">
-          <Icon name="device" size={32} />
+          <img src="/icon-white.png" alt="Balkania" className="kiosk-logo" />
           <h1>Pair this device</h1>
           <p className="kiosk-muted">Enter the PIN shown when this kiosk was registered in Balkania Admin.</p>
           {reauthBanner && (
@@ -215,13 +226,20 @@ export default function KioskPage() {
   if (phase === "select-action") {
     return (
       <main className="kiosk kiosk-center">
-        <div className="kiosk-pair-card">
-          <Icon name="qr" size={32} />
+        <div className="kiosk-pair-card kiosk-action-card">
+          <img src="/icon-white.png" alt="Balkania" className="kiosk-logo" />
           <h1>What are you recording?</h1>
-          <p className="kiosk-muted">Choose an action, then scan each employee's code.</p>
+          <p className="kiosk-muted">Choose an action, then scan each employee&apos;s code.</p>
           <div className="kiosk-action-grid">
             {actionOrder.map((action) => (
-              <button key={action} className="kiosk-secondary-button kiosk-action-tile" onClick={() => chooseAction(action)}>
+              <button
+                key={action}
+                className={`kiosk-action-tile tone-${eventIcons[action].tone}`}
+                onClick={() => chooseAction(action)}
+              >
+                <span className="kiosk-action-icon">
+                  <Icon name={eventIcons[action].icon} size={30} strokeWidth={1.9} />
+                </span>
                 {eventLabels[action]}
               </button>
             ))}
@@ -237,8 +255,11 @@ export default function KioskPage() {
         <div className="kiosk-scanner-video-wrap">
           <video ref={videoRef} className="kiosk-scanner-video" muted playsInline />
           <button className="kiosk-mode-badge" onClick={() => setPhase("select-action")}>
-            {eventLabels[selectedAction]} <Icon name="swap" size={14} />
+            <Icon name={eventIcons[selectedAction].icon} size={16} />
+            {eventLabels[selectedAction]}
+            <Icon name="swap" size={14} className="kiosk-mode-swap" />
           </button>
+          <img src="/icon-white.png" alt="Balkania" className="kiosk-scanner-logo" />
           {!cameraError && (
             <div className="kiosk-scanner-caption">
               <Icon name="qr" size={22} /> Point the camera at your QR code
