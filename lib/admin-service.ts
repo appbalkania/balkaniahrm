@@ -157,6 +157,12 @@ export async function deleteEmployee(employeeId: string): Promise<void> {
   if (data?.error) throw new Error(data.error);
 }
 
+export async function purgeEmployee(employeeId: string): Promise<void> {
+  const { data, error } = await client().functions.invoke("purge-employee", { body: { employeeId } });
+  if (error) return unwrapFunctionError(error);
+  if (data?.error) throw new Error(data.error);
+}
+
 export interface AdminManagerOption {
   id: string;
   fullName: string;
