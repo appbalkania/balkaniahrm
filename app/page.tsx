@@ -277,8 +277,15 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   // kept in the background) across midnight would keep showing yesterday's
   // "complete" state forever, with clock-in stuck disabled until a hard reload.
   // Revalidate whenever the calendar day has moved on and the app regains attention.
+  //
+  // Separately, attendance can also be recorded from outside this session
+  // entirely (a shared kiosk scanning the employee's QR code), which this
+  // tab has no way to know about until it re-fetches -- so also poll the
+  // attendance state periodically and on every regained-focus, independent
+  // of the day-change check.
   useEffect(() => {
     let lastDate = new Date().toDateString();
+
     function revalidateIfNewDay() {
       const currentDate = new Date().toDateString();
       if (currentDate !== lastDate) {
@@ -286,16 +293,34 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
         refresh().catch(() => undefined);
       }
     }
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") revalidateIfNewDay();
+
+    function refreshAttendance() {
+      Promise.all([getTodaySession(), getTodayEvents()])
+        .then(([session, events]) => {
+          setAttendanceState(session?.state ?? "not_started");
+          setTodayEvents(events);
+        })
+        .catch(() => undefined);
     }
+
+    function onWake() {
+      revalidateIfNewDay();
+      refreshAttendance();
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") onWake();
+    }
+
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("focus", revalidateIfNewDay);
-    const interval = setInterval(revalidateIfNewDay, 60000);
+    window.addEventListener("focus", onWake);
+    const dayCheckInterval = setInterval(revalidateIfNewDay, 60000);
+    const attendancePollInterval = setInterval(refreshAttendance, 30000);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", revalidateIfNewDay);
-      clearInterval(interval);
+      window.removeEventListener("focus", onWake);
+      clearInterval(dayCheckInterval);
+      clearInterval(attendancePollInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
