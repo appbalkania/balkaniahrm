@@ -1,5 +1,5 @@
-const CACHE_NAME = "balkania-v4";
-const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/icon.png", "/icon-white.png"];
+const CACHE_NAME = "balkania-v5";
+const PRECACHE_URLS = ["/", "/kiosk", "/manifest.webmanifest", "/kiosk.webmanifest", "/icon.png", "/icon-white.png"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
