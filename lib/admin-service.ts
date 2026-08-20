@@ -377,13 +377,75 @@ export interface AdminWorkSchedule {
   branchName: string | null;
   startsAt: string;
   endsAt: string;
+  workingDays: number[];
   isDefault: boolean;
 }
 
+const SCHEDULE_COLUMNS = "id,name,branch_name,starts_at,ends_at,working_days,is_default";
+
+function mapWorkSchedule(row: {
+  id: string;
+  name: string;
+  branch_name: string | null;
+  starts_at: string;
+  ends_at: string;
+  working_days: number[] | null;
+  is_default: boolean;
+}): AdminWorkSchedule {
+  return {
+    id: row.id,
+    name: row.name,
+    branchName: row.branch_name,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    workingDays: row.working_days ?? [],
+    isDefault: row.is_default,
+  };
+}
+
 export async function listWorkSchedules(): Promise<AdminWorkSchedule[]> {
-  const { data, error } = await client().from("work_schedules").select("id,name,branch_name,starts_at,ends_at,is_default").order("name");
+  const { data, error } = await client().from("work_schedules").select(SCHEDULE_COLUMNS).order("name");
   if (error) throw error;
-  return (data ?? []).map((row) => ({ id: row.id, name: row.name, branchName: row.branch_name, startsAt: row.starts_at, endsAt: row.ends_at, isDefault: row.is_default }));
+  return (data ?? []).map(mapWorkSchedule);
+}
+
+export interface CreateWorkScheduleInput {
+  name: string;
+  branchName?: string | null;
+  startsAt: string;
+  endsAt: string;
+  workingDays: number[];
+  isDefault: boolean;
+}
+
+export async function createWorkSchedule(input: CreateWorkScheduleInput): Promise<AdminWorkSchedule> {
+  // A single default is enforced by a partial unique index, so an existing
+  // default must be cleared first rather than relying on insert order.
+  if (input.isDefault) await clearDefaultWorkSchedule();
+  const { data, error } = await client()
+    .from("work_schedules")
+    .insert({
+      name: input.name,
+      branch_name: input.branchName || null,
+      starts_at: input.startsAt,
+      ends_at: input.endsAt,
+      working_days: input.workingDays,
+      is_default: input.isDefault,
+    })
+    .select(SCHEDULE_COLUMNS)
+    .single();
+  if (error) throw error;
+  return mapWorkSchedule(data);
+}
+
+export async function deleteWorkSchedule(id: string): Promise<void> {
+  const { error } = await client().from("work_schedules").delete().eq("id", id);
+  if (error) throw error;
+}
+
+async function clearDefaultWorkSchedule(): Promise<void> {
+  const { error } = await client().from("work_schedules").update({ is_default: false }).eq("is_default", true);
+  if (error) throw error;
 }
 
 export interface AdminDevice {

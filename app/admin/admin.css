@@ -118,6 +118,26 @@
 .purge-link:disabled { opacity: 0.5; }
 .filter, .schedule-row span { color: #6b7280; font-size: 12.5px; }
 .schedule-row, .device-card, .setting-card { padding: 16px 0; border-bottom: 1px solid #eef0f6; }
+.schedule-row:last-child { border-bottom: 0; }
+
+.weekday-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.weekday-picker button {
+  flex: 1;
+  min-width: 46px;
+  padding: 9px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #6b7280;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.weekday-picker button.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+.weekday-picker button:disabled { opacity: 0.5; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; font-weight: 600; }
+.checkbox-row input { width: auto; margin: 0; }
 
 .loading-panel, .empty-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px 20px; text-align: center; color: #6b7280; }
 .loading-panel { flex-direction: row; }
