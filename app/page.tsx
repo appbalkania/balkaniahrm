@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "../components/icons";
 import { changePassword, getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
+import { errorMessage } from "../lib/errors";
 import { recordAttendance } from "../lib/attendance-service";
 import {
   getLeaveBalances,
@@ -186,7 +187,7 @@ function LoginScreen({ configured }: { configured: boolean }) {
     try {
       await signInWithPassword(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed. Check your details and try again.");
+      setError(errorMessage(err, "Sign-in failed. Check your details and try again."));
     } finally {
       setLoading(false);
     }
@@ -341,7 +342,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
       setTodayEvents(events);
       setNotice(`${label} recorded at ${formatTime(new Date().toISOString())}.`);
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't record that action.");
+      setNotice(errorMessage(err, "Couldn't record that action."));
     } finally {
       setBusyAction(null);
     }
@@ -640,7 +641,7 @@ function LeaveForm({
       await onSubmit({ leaveType: kind, startsOn, endsOn, note: note || undefined });
       onCancel();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't submit the request.");
+      setError(errorMessage(err, "Couldn't submit the request."));
     } finally {
       setSubmitting(false);
     }
@@ -895,7 +896,7 @@ function ChangePasswordScreen({ onBack }: { onBack: () => void }) {
       setConfirmPassword("");
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't change your password.");
+      setError(errorMessage(err, "Couldn't change your password."));
     } finally {
       setSaving(false);
     }
@@ -977,7 +978,7 @@ function HolidaysScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     listHolidays()
       .then(setHolidays)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load holidays."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load holidays.")));
   }, []);
 
   return (

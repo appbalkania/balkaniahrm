@@ -6,6 +6,7 @@ import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../../lib/auth-service";
 import { getMyProfile, submitLeaveRequest } from "../../lib/employee-service";
 import type { LeaveRequestInput } from "../../lib/domain";
+import { errorMessage } from "../../lib/errors";
 import { recordAttendance } from "../../lib/attendance-service";
 import { downloadCsv } from "../../lib/csv";
 import type { AttendanceEventType, Profile } from "../../lib/domain";
@@ -219,7 +220,7 @@ function AdminLogin({ configured }: { configured: boolean }) {
     try {
       await signInWithPassword(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(errorMessage(err, "Sign-in failed."));
     } finally {
       setLoading(false);
     }
@@ -358,7 +359,7 @@ function Dashboard({ onNavigate }: { onNavigate: (module: Module) => void }) {
     let active = true;
     getDashboardStats()
       .then((s) => active && setStats(s))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Couldn't load dashboard data."));
+      .catch((err) => active && setError(errorMessage(err, "Couldn't load dashboard data.")));
     return () => {
       active = false;
     };
@@ -410,7 +411,7 @@ function Employees({ setNotice }: NoticeProps) {
   function load() {
     listEmployees()
       .then((data) => setRows(data))
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load employees."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load employees.")));
   }
 
   useEffect(() => {
@@ -444,7 +445,7 @@ function Employees({ setNotice }: NoticeProps) {
       setNotice(row.active ? `${row.fullName} was deactivated.` : `${row.fullName} was reactivated.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't update the employee's status.");
+      setNotice(errorMessage(err, "Couldn't update the employee's status."));
     } finally {
       setBusyId(null);
     }
@@ -458,7 +459,7 @@ function Employees({ setNotice }: NoticeProps) {
       setNotice(`${row.fullName} was deleted.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't delete the employee.");
+      setNotice(errorMessage(err, "Couldn't delete the employee."));
     } finally {
       setBusyId(null);
     }
@@ -477,7 +478,7 @@ function Employees({ setNotice }: NoticeProps) {
       setNotice(`${row.fullName} and all their records were purged.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't purge the employee.");
+      setNotice(errorMessage(err, "Couldn't purge the employee."));
     } finally {
       setBusyId(null);
     }
@@ -606,7 +607,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
       });
       onCreated(employee);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't create the employee.");
+      setError(errorMessage(err, "Couldn't create the employee."));
     } finally {
       setSaving(false);
     }
@@ -728,7 +729,7 @@ function EditEmployeeModal({
       await upsertEmployeeDetails(employee.id, { ppsNumber, dateOfBirth, phoneNumber, address, placeOfBirth });
       onSaved(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save changes.");
+      setError(errorMessage(err, "Couldn't save changes."));
     } finally {
       setSaving(false);
     }
@@ -813,7 +814,7 @@ function Teams({ setNotice }: NoticeProps) {
         setTeams(teamRows);
         setEmployees(employeeRows);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load teams."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load teams.")));
   }
 
   useEffect(() => {
@@ -898,7 +899,7 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
       const team = await createTeam({ name, managerId: managerId || null });
       onCreated(team);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't create the team.");
+      setError(errorMessage(err, "Couldn't create the team."));
     } finally {
       setSaving(false);
     }
@@ -966,7 +967,7 @@ function EditTeamModal({
       const updated = await updateTeam({ id: team.id, name, managerId: managerId || null });
       onSaved(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save changes.");
+      setError(errorMessage(err, "Couldn't save changes."));
     } finally {
       setSaving(false);
     }
@@ -1014,7 +1015,7 @@ function Attendance({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean
   function load() {
     listAttendanceSessions(today)
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load attendance."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load attendance.")));
   }
 
   useEffect(() => {
@@ -1128,7 +1129,7 @@ function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; o
       const employee = employees.find((e) => e.id === employeeId);
       onRecorded(employee?.fullName ?? "employee");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't record attendance.");
+      setError(errorMessage(err, "Couldn't record attendance."));
     } finally {
       setSaving(false);
     }
@@ -1200,7 +1201,7 @@ function Timesheets({ setNotice }: NoticeProps) {
     setRows(null);
     listTimesheet(startDate, endDate)
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load the timesheet."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load the timesheet.")));
   }
 
   useEffect(() => {
@@ -1326,7 +1327,7 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
       const data = await listPendingLeaveRequests();
       setRows(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load leave requests.");
+      setError(errorMessage(err, "Couldn't load leave requests."));
     }
   }
 
@@ -1342,7 +1343,7 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
       setNotice(`Leave request ${status}.`);
       await load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't update the request.");
+      setNotice(errorMessage(err, "Couldn't update the request."));
     } finally {
       setBusyId(null);
     }
@@ -1425,7 +1426,7 @@ function RequestLeaveModal({ onClose, onSaved }: { onClose: () => void; onSaved:
       await submitLeaveRequest({ leaveType, startsOn, endsOn, note: note || undefined });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't submit the leave request.");
+      setError(errorMessage(err, "Couldn't submit the leave request."));
     } finally {
       setSaving(false);
     }
@@ -1485,7 +1486,7 @@ function LeaveEntitlements({ setNotice }: NoticeProps) {
   function load() {
     listLeaveBalances()
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load leave entitlements."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load leave entitlements.")));
   }
 
   useEffect(() => {
@@ -1561,7 +1562,7 @@ function SetEntitlementModal({ onClose, onSaved }: { onClose: () => void; onSave
       const employee = employees.find((e) => e.id === employeeId);
       onSaved(employee?.fullName ?? "employee");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the entitlement.");
+      setError(errorMessage(err, "Couldn't save the entitlement."));
     } finally {
       setSaving(false);
     }
@@ -1633,7 +1634,7 @@ function Disciplinary({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boole
   function load() {
     listDisciplinaryActions()
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load disciplinary actions."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load disciplinary actions.")));
   }
 
   useEffect(() => {
@@ -1648,7 +1649,7 @@ function Disciplinary({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boole
       setNotice("Disciplinary record deleted.");
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't delete the record.");
+      setNotice(errorMessage(err, "Couldn't delete the record."));
     } finally {
       setBusyId(null);
     }
@@ -1727,7 +1728,7 @@ function IssueDisciplinaryModal({ onClose, onIssued }: { onClose: () => void; on
       await issueDisciplinaryAction({ employeeId, severity, reason, details, occurredOn });
       onIssued();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't record the action.");
+      setError(errorMessage(err, "Couldn't record the action."));
     } finally {
       setSaving(false);
     }
@@ -1793,7 +1794,7 @@ function Holidays({ setNotice }: NoticeProps) {
   function load() {
     listAdminHolidays()
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load holidays."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load holidays.")));
   }
 
   useEffect(() => {
@@ -1808,7 +1809,7 @@ function Holidays({ setNotice }: NoticeProps) {
       setNotice(`${nextYear} bank holidays seeded.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't seed next year's holidays.");
+      setNotice(errorMessage(err, "Couldn't seed next year's holidays."));
     } finally {
       setSeeding(false);
     }
@@ -1821,7 +1822,7 @@ function Holidays({ setNotice }: NoticeProps) {
       setNotice(`${holiday.name} removed.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't remove the holiday.");
+      setNotice(errorMessage(err, "Couldn't remove the holiday."));
     } finally {
       setBusyId(null);
     }
@@ -1886,7 +1887,7 @@ function AddHolidayModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       await addHoliday(date, name);
       onAdded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add the holiday.");
+      setError(errorMessage(err, "Couldn't add the holiday."));
     } finally {
       setSaving(false);
     }
@@ -1927,7 +1928,7 @@ function Schedules({ setNotice }: NoticeProps) {
     let active = true;
     listWorkSchedules()
       .then((data) => active && setRows(data))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Couldn't load schedules."));
+      .catch((err) => active && setError(errorMessage(err, "Couldn't load schedules.")));
     return () => {
       active = false;
     };
@@ -1968,7 +1969,7 @@ function Devices({ setNotice }: NoticeProps) {
   function load() {
     listAttendanceDevices()
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load kiosk devices."));
+      .catch((err) => setError(errorMessage(err, "Couldn't load kiosk devices.")));
   }
 
   useEffect(() => {
@@ -1981,7 +1982,7 @@ function Devices({ setNotice }: NoticeProps) {
       const pin = await regenerateDevicePin(device.id);
       setPinReveal({ label: device.label, pin });
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't regenerate the PIN.");
+      setNotice(errorMessage(err, "Couldn't regenerate the PIN."));
     } finally {
       setBusyId(null);
     }
@@ -1994,7 +1995,7 @@ function Devices({ setNotice }: NoticeProps) {
       setNotice(`${device.label} ${device.active ? "deactivated" : "reactivated"}.`);
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't update the device.");
+      setNotice(errorMessage(err, "Couldn't update the device."));
     } finally {
       setBusyId(null);
     }
@@ -2070,7 +2071,7 @@ function RegisterKioskModal({ onClose, onRegistered }: { onClose: () => void; on
       const device = await registerDevice(label);
       onRegistered(device);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't register the kiosk.");
+      setError(errorMessage(err, "Couldn't register the kiosk."));
     } finally {
       setSaving(false);
     }
