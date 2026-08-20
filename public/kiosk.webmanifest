@@ -1,0 +1,14 @@
+{
+  "name": "Balkania Kiosk",
+  "short_name": "Balkania Kiosk",
+  "description": "Shared attendance kiosk for clocking in and out",
+  "start_url": "/kiosk",
+  "scope": "/kiosk",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1c2260",
+  "theme_color": "#1c2260",
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
