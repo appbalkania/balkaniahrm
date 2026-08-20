@@ -43,12 +43,12 @@ export async function getMyProfile(): Promise<Profile | null> {
   if (!auth.user) return null;
   const { data, error } = await client()
     .from("profiles")
-    .select("id,full_name,employee_code,role")
+    .select("id,full_name,employee_code,role,active")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return { id: data.id, fullName: data.full_name, employeeCode: data.employee_code, role: data.role };
+  return { id: data.id, fullName: data.full_name, employeeCode: data.employee_code, role: data.role, active: data.active };
 }
 
 export async function getTodaySession(): Promise<AttendanceSession | null> {
