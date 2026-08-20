@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import "./admin.css";
 import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../../lib/auth-service";
-import { getMyProfile } from "../../lib/employee-service";
+import { getMyProfile, submitLeaveRequest } from "../../lib/employee-service";
+import type { LeaveRequestInput } from "../../lib/domain";
 import { recordAttendance } from "../../lib/attendance-service";
 import { downloadCsv } from "../../lib/csv";
 import type { AttendanceEventType, Profile } from "../../lib/domain";
@@ -1318,6 +1319,7 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
   const [rows, setRows] = useState<AdminLeaveRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
 
   async function load() {
     try {
@@ -1348,6 +1350,17 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
 
   return (
     <>
+      <Toolbar action="Request leave" onAction={() => setShowRequestModal(true)} />
+      {showRequestModal && (
+        <RequestLeaveModal
+          onClose={() => setShowRequestModal(false)}
+          onSaved={() => {
+            setShowRequestModal(false);
+            setNotice(isHrAdmin ? "Leave request submitted." : "Leave request submitted for HR approval.");
+            load();
+          }}
+        />
+      )}
       <div className="admin-stats">
         <Stat label="Pending requests" value={String(rows?.length ?? 0)} note="Needs a decision" />
       </div>
@@ -1385,6 +1398,75 @@ function LeaveRequests({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { 
         </section>
       )}
     </>
+  );
+}
+
+function RequestLeaveModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [leaveType, setLeaveType] = useState<LeaveRequestInput["leaveType"]>("annual");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!startsOn || !endsOn) {
+      setError("Choose a start and end date.");
+      return;
+    }
+    if (endsOn < startsOn) {
+      setError("End date must be on or after the start date.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await submitLeaveRequest({ leaveType, startsOn, endsOn, note: note || undefined });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't submit the leave request.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Request leave</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Leave type
+            <select value={leaveType} onChange={(e) => setLeaveType(e.target.value as LeaveRequestInput["leaveType"])} disabled={saving}>
+              {leaveTypeOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Starts on
+            <input type="date" required value={startsOn} onChange={(e) => setStartsOn(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Ends on
+            <input type="date" required value={endsOn} onChange={(e) => setEndsOn(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Note (optional)
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={saving} rows={2} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Submitting…" : "Submit request"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
