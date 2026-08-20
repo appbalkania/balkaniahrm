@@ -21,12 +21,13 @@ export interface AdminEmployee {
   role: string;
   teamId: string | null;
   teamName: string | null;
+  active: boolean;
 }
 
 export async function listEmployees(): Promise<AdminEmployee[]> {
   const { data, error } = await client()
     .from("profiles")
-    .select("id,full_name,employee_code,role,team_id,teams!profiles_team_id_fkey(name)")
+    .select("id,full_name,employee_code,role,team_id,active,teams!profiles_team_id_fkey(name)")
     .order("full_name");
   if (error) throw error;
   return (data ?? []).map((row) => {
@@ -38,8 +39,15 @@ export async function listEmployees(): Promise<AdminEmployee[]> {
       role: row.role,
       teamId: row.team_id,
       teamName: team?.name ?? null,
+      active: row.active,
     };
   });
+}
+
+export async function setEmployeeActive(employeeId: string, active: boolean): Promise<void> {
+  const { data, error } = await client().functions.invoke("set-employee-active", { body: { employeeId, active } });
+  if (error) return unwrapFunctionError(error);
+  if (data?.error) throw new Error(data.error);
 }
 
 export interface CreateEmployeeInput {
@@ -71,7 +79,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
   });
   if (error) return unwrapFunctionError(error);
   if (data?.error) throw new Error(data.error);
-  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null };
+  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null, active: true };
 }
 
 export interface EmployeeDetails {
@@ -128,7 +136,7 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminE
     .from("profiles")
     .update({ full_name: input.fullName, employee_code: input.employeeCode, role: input.role, team_id: input.teamId || null })
     .eq("id", input.id)
-    .select("id,full_name,employee_code,role,team_id,teams!profiles_team_id_fkey(name)")
+    .select("id,full_name,employee_code,role,team_id,active,teams!profiles_team_id_fkey(name)")
     .single();
   if (error) throw error;
   const team = Array.isArray(data.teams) ? data.teams[0] : data.teams;
@@ -139,6 +147,7 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminE
     role: data.role,
     teamId: data.team_id,
     teamName: team?.name ?? null,
+    active: data.active,
   };
 }
 
@@ -158,6 +167,7 @@ export async function listManagers(): Promise<AdminManagerOption[]> {
     .from("profiles")
     .select("id,full_name")
     .in("role", ["manager", "hr_admin"])
+    .eq("active", true)
     .order("full_name");
   if (error) throw error;
   return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }));

@@ -33,6 +33,7 @@ import {
   reviewLeaveRequest,
   seedBankHolidays,
   setDeviceActive,
+  setEmployeeActive,
   setLeaveEntitlement,
   updateEmployee,
   updateTeam,
@@ -73,7 +74,7 @@ type Module =
   | "assets"
   | "settings"
   | "integrations";
-type AuthStatus = "loading" | "signedOut" | "forbidden" | "signedIn";
+type AuthStatus = "loading" | "signedOut" | "forbidden" | "deactivated" | "signedIn";
 
 type ModuleEntry = [Module, string, Parameters<typeof Icon>[0]["name"]];
 
@@ -142,7 +143,9 @@ export default function AdminPage() {
       try {
         const p = await getMyProfile();
         if (!active) return;
-        if (p && (p.role === "manager" || p.role === "hr_admin")) {
+        if (p && !p.active) {
+          setStatus("deactivated");
+        } else if (p && (p.role === "manager" || p.role === "hr_admin")) {
           setProfile(p);
           setStatus("signedIn");
         } else {
@@ -177,6 +180,17 @@ export default function AdminPage() {
         <Icon name="warning" size={36} className="warn-icon" />
         <h1>Access restricted</h1>
         <p className="muted">This portal is limited to managers and HR administrators.</p>
+        <button className="outline-button" onClick={() => signOut()}>Sign out</button>
+      </main>
+    );
+  }
+
+  if (status === "deactivated") {
+    return (
+      <main className="admin-auth-screen">
+        <Icon name="warning" size={36} className="warn-icon" />
+        <h1>Account deactivated</h1>
+        <p className="muted">Your account has been deactivated. Contact another HR administrator if you believe this is a mistake.</p>
         <button className="outline-button" onClick={() => signOut()}>Sign out</button>
       </main>
     );
@@ -381,6 +395,7 @@ function Dashboard({ onNavigate }: { onNavigate: (module: Module) => void }) {
 
 function Employees({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminEmployee[] | null>(null);
+  const [tab, setTab] = useState<"active" | "former">("active");
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<AdminEmployee | null>(null);
@@ -397,6 +412,8 @@ function Employees({ setNotice }: NoticeProps) {
     load();
   }, []);
 
+  const visibleRows = rows?.filter((row) => (tab === "active" ? row.active : !row.active)) ?? null;
+
   function handleExport() {
     if (!rows || rows.length === 0) {
       setNotice("No employees to export yet.");
@@ -406,16 +423,30 @@ function Employees({ setNotice }: NoticeProps) {
     try {
       downloadCsv(
         `employees-${new Date().toISOString().slice(0, 10)}.csv`,
-        ["Full name", "Employee code", "Role", "Team"],
-        rows.map((row) => [row.fullName, row.employeeCode, row.role, row.teamName ?? ""]),
+        ["Full name", "Employee code", "Role", "Team", "Status"],
+        rows.map((row) => [row.fullName, row.employeeCode, row.role, row.teamName ?? "", row.active ? "Active" : "Former"]),
       );
     } finally {
       setExporting(false);
     }
   }
 
+  async function handleToggleActive(row: AdminEmployee) {
+    if (row.active && !window.confirm(`Deactivate ${row.fullName}? They'll be signed out immediately and won't be able to sign back in until reactivated.`)) return;
+    setBusyId(row.id);
+    try {
+      await setEmployeeActive(row.id, !row.active);
+      setNotice(row.active ? `${row.fullName} was deactivated.` : `${row.fullName} was reactivated.`);
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't update the employee's status.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleDelete(row: AdminEmployee) {
-    if (!window.confirm(`Delete ${row.fullName}? This permanently removes their account and cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete ${row.fullName}? This cannot be undone and is blocked if they have any attendance, leave, or disciplinary history — use Deactivate for former employees instead.`)) return;
     setBusyId(row.id);
     try {
       await deleteEmployee(row.id);
@@ -431,6 +462,10 @@ function Employees({ setNotice }: NoticeProps) {
   return (
     <>
       <Toolbar action="Add employee" onAction={() => setShowAddModal(true)} onExport={handleExport} exporting={exporting} />
+      <div className="module-tabs">
+        <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>Active</button>
+        <button className={tab === "former" ? "active" : ""} onClick={() => setTab("former")}>Former</button>
+      </div>
       {showAddModal && (
         <AddEmployeeModal
           onClose={() => setShowAddModal(false)}
@@ -454,22 +489,37 @@ function Employees({ setNotice }: NoticeProps) {
       )}
       {error ? (
         <ErrorState message={error} />
-      ) : !rows ? (
+      ) : !visibleRows ? (
         <LoadingPanel />
-      ) : rows.length === 0 ? (
-        <EmptyPanel icon="users" title="No employees yet" note="Add or import employees to see them here." />
+      ) : visibleRows.length === 0 ? (
+        <EmptyPanel
+          icon="users"
+          title={tab === "active" ? "No employees yet" : "No former employees"}
+          note={tab === "active" ? "Add or import employees to see them here." : "Deactivated employees will appear here."}
+        />
       ) : (
         <section className="panel">
           <div className="table-head cols-5"><b>Employee</b><b>Code</b><b>Role</b><b>Team</b><b>Actions</b></div>
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <div className="table-row cols-5" key={row.id}>
-              <span><i className="person-dot">{row.fullName[0]}</i>{row.fullName}</span>
+              <span>
+                <i className="person-dot">{row.fullName[0]}</i>{row.fullName}
+                {!row.active && <span className="pill">Inactive</span>}
+              </span>
               <span>{row.employeeCode}</span>
               <span className="capitalize">{row.role.replace("_", " ")}</span>
               <span>{row.teamName ?? "—"}</span>
               <span className="row-actions">
                 <button className="icon-action" disabled={busyId === row.id} onClick={() => setEditingEmployee(row)} aria-label={`Edit ${row.fullName}`}>
                   <Icon name="edit" size={15} />
+                </button>
+                <button
+                  className="icon-action"
+                  disabled={busyId === row.id}
+                  onClick={() => handleToggleActive(row)}
+                  aria-label={row.active ? `Deactivate ${row.fullName}` : `Reactivate ${row.fullName}`}
+                >
+                  <Icon name={row.active ? "logout" : "check"} size={15} />
                 </button>
                 <button className="icon-action reject" disabled={busyId === row.id} onClick={() => handleDelete(row)} aria-label={`Delete ${row.fullName}`}>
                   <Icon name="trash" size={15} />
@@ -741,7 +791,7 @@ function Teams({ setNotice }: NoticeProps) {
     load();
   }, []);
 
-  const memberCounts = employees.reduce<Record<string, number>>((acc, e) => {
+  const memberCounts = employees.filter((e) => e.active).reduce<Record<string, number>>((acc, e) => {
     if (e.teamId) acc[e.teamId] = (acc[e.teamId] ?? 0) + 1;
     return acc;
   }, {});
@@ -1032,7 +1082,7 @@ function RecordAttendanceModal({ onClose, onRecorded }: { onClose: () => void; o
 
   useEffect(() => {
     listEmployees()
-      .then(setEmployees)
+      .then((data) => setEmployees(data.filter((e) => e.active)))
       .catch(() => setEmployees([]));
   }, []);
 
@@ -1366,7 +1416,7 @@ function SetEntitlementModal({ onClose, onSaved }: { onClose: () => void; onSave
 
   useEffect(() => {
     listEmployees()
-      .then(setEmployees)
+      .then((data) => setEmployees(data.filter((e) => e.active)))
       .catch(() => setEmployees([]));
   }, []);
 
@@ -1514,7 +1564,7 @@ function IssueDisciplinaryModal({ onClose, onIssued }: { onClose: () => void; on
 
   useEffect(() => {
     listEmployees()
-      .then(setEmployees)
+      .then((data) => setEmployees(data.filter((e) => e.active)))
       .catch(() => setEmployees([]));
   }, []);
 

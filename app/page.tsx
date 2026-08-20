@@ -33,7 +33,7 @@ import type {
 } from "../lib/domain";
 
 type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays";
-type AuthStatus = "loading" | "signedOut" | "needsSetup" | "signedIn";
+type AuthStatus = "loading" | "signedOut" | "needsSetup" | "deactivated" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
 const stateText: Record<AttendanceState, string> = {
@@ -81,7 +81,9 @@ export default function Home() {
       try {
         const p = await getMyProfile();
         if (!active) return;
-        if (p) {
+        if (p && !p.active) {
+          setStatus("deactivated");
+        } else if (p) {
           setProfile(p);
           setStatus("signedIn");
         } else {
@@ -101,7 +103,9 @@ export default function Home() {
       }
       getMyProfile()
         .then((p) => {
-          if (p) {
+          if (p && !p.active) {
+            setStatus("deactivated");
+          } else if (p) {
             setProfile(p);
             setStatus("signedIn");
           } else {
@@ -131,6 +135,7 @@ export default function Home() {
     return <AppShell profile={profile} configured={configured} />;
   }
   if (status === "needsSetup") return <SetupNoticeScreen />;
+  if (status === "deactivated") return <DeactivatedScreen />;
   return <LoginScreen configured={configured} />;
 }
 
@@ -152,6 +157,17 @@ function SetupNoticeScreen() {
         Your sign-in succeeded, but no employee profile exists yet for this account. Ask HR to create your employee
         record in Balkania Admin, then sign in again.
       </p>
+      <button className="secondary-button" onClick={() => signOut()}>Sign out</button>
+    </main>
+  );
+}
+
+function DeactivatedScreen() {
+  return (
+    <main className="shell centered">
+      <Icon name="warning" size={40} className="warn-icon" />
+      <h1>Account deactivated</h1>
+      <p className="muted center">Your account has been deactivated. Contact HR if you believe this is a mistake.</p>
       <button className="secondary-button" onClick={() => signOut()}>Sign out</button>
     </main>
   );

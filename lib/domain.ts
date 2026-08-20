@@ -43,6 +43,7 @@ export interface Profile {
   fullName: string;
   employeeCode: string;
   role: EmployeeRole;
+  active: boolean;
 }
 
 export interface LeaveBalance {
