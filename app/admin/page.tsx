@@ -274,7 +274,7 @@ function AdminShell({ profile }: { profile: Profile }) {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><img src="/icon.png" alt="" /><b>Balkania</b></div>
+        <div className="admin-brand"><img src="/icon-white.png" alt="" /><b>Balkania</b></div>
         {visibleGroups.map((group) => (
           <div className="sidebar-group" key={group.label}>
             <p>{group.label}</p>
