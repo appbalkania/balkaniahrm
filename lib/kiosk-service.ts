@@ -36,15 +36,27 @@ export function clearKioskSession(): void {
 
 const SESSION_INVALID_PREFIX = "KIOSK_SESSION_INVALID:";
 
+// Supabase RPC errors resolve as plain { message, code, ... } objects rather
+// than Error instances, so an `instanceof Error` check never matched them:
+// every backend message (including the KIOSK_SESSION_INVALID signal that is
+// supposed to trigger re-pairing) was swallowed and shown as a generic
+// "Something went wrong." Duck-type on `.message` instead — see lib/errors.ts.
+function rawMessage(error: unknown): string | null {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return null;
+}
+
 export function isKioskSessionInvalidError(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith(SESSION_INVALID_PREFIX);
+  return rawMessage(error)?.startsWith(SESSION_INVALID_PREFIX) ?? false;
 }
 
 export function kioskErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.startsWith(SESSION_INVALID_PREFIX) ? error.message.slice(SESSION_INVALID_PREFIX.length).trim() : error.message;
-  }
-  return "Something went wrong.";
+  const message = rawMessage(error);
+  if (!message) return "Something went wrong.";
+  return message.startsWith(SESSION_INVALID_PREFIX) ? message.slice(SESSION_INVALID_PREFIX.length).trim() : message;
 }
 
 export async function pairDevice(pin: string): Promise<KioskSession> {
