@@ -13,6 +13,7 @@ import {
   createEmployee,
   createTeam,
   deleteEmployee,
+  deleteDisciplinaryAction,
   deleteHoliday,
   getDashboardStats,
   getEmployeeDetails,
@@ -323,7 +324,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "timesheets" && <Timesheets setNotice={setNotice} />}
         {module === "leaves" && <Leaves setNotice={setNotice} />}
         {module === "holidays" && <Holidays setNotice={setNotice} />}
-        {module === "disciplinary" && <Disciplinary setNotice={setNotice} />}
+        {module === "disciplinary" && <Disciplinary setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "performance" && (
           <EmptyPanel icon="chart" title="Performance Review" note="Goals, reviews, and feedback cycles are coming in a later release." />
         )}
@@ -1526,10 +1527,11 @@ const severityPillClass: Record<DisciplinarySeverity, string> = {
   termination_notice: "danger",
 };
 
-function Disciplinary({ setNotice }: NoticeProps) {
+function Disciplinary({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
   const [rows, setRows] = useState<AdminDisciplinaryAction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   function load() {
     listDisciplinaryActions()
@@ -1540,6 +1542,20 @@ function Disciplinary({ setNotice }: NoticeProps) {
   useEffect(() => {
     load();
   }, []);
+
+  async function handleDelete(row: AdminDisciplinaryAction) {
+    if (!window.confirm(`Delete this ${severityLabels[row.severity].toLowerCase()} for ${row.employeeName}? This cannot be undone.`)) return;
+    setBusyId(row.id);
+    try {
+      await deleteDisciplinaryAction(row.id);
+      setNotice("Disciplinary record deleted.");
+      load();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't delete the record.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <>
@@ -1562,13 +1578,22 @@ function Disciplinary({ setNotice }: NoticeProps) {
         <EmptyPanel icon="warning" title="No disciplinary actions" note="Actions you issue to employees will appear here." />
       ) : (
         <section className="panel">
-          <div className="table-head"><b>Employee</b><b>Severity</b><b>Reason</b><b>Date</b></div>
+          <div className={`table-head ${isHrAdmin ? "cols-5" : ""}`}>
+            <b>Employee</b><b>Severity</b><b>Reason</b><b>Date</b>{isHrAdmin && <b></b>}
+          </div>
           {rows.map((row) => (
-            <div className="table-row" key={row.id}>
+            <div className={`table-row ${isHrAdmin ? "cols-5" : ""}`} key={row.id}>
               <span><i className="person-dot">{row.employeeName[0]}</i>{row.employeeName}</span>
               <span><span className={`pill ${severityPillClass[row.severity]}`}>{severityLabels[row.severity]}</span></span>
               <span>{row.reason}</span>
               <span>{formatDate(row.occurredOn)}</span>
+              {isHrAdmin && (
+                <span className="row-actions">
+                  <button className="icon-action reject" disabled={busyId === row.id} onClick={() => handleDelete(row)} aria-label={`Delete disciplinary record for ${row.employeeName}`}>
+                    <Icon name="trash" size={15} />
+                  </button>
+                </span>
+              )}
             </div>
           ))}
         </section>
