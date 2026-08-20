@@ -74,5 +74,11 @@ Deno.serve(async (req) => {
   });
   if (banError) return json({ error: banError.message }, 400);
 
+  if (!body.active) {
+    // Deactivating mid-shift shouldn't leave them stuck in "Working" forever
+    // -- nothing else can close their session out once they're deactivated.
+    await adminClient.rpc("_auto_close_attendance_session", { p_employee_id: employeeId });
+  }
+
   return json({ id: employeeId, active: body.active });
 });
