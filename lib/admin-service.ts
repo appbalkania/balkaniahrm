@@ -232,6 +232,7 @@ export async function updateTeam(input: UpdateTeamInput): Promise<AdminTeam> {
 
 export interface AdminLeaveRequest {
   id: string;
+  employeeId: string;
   leaveType: string;
   startsOn: string;
   endsOn: string;
@@ -242,7 +243,7 @@ export interface AdminLeaveRequest {
 export async function listPendingLeaveRequests(): Promise<AdminLeaveRequest[]> {
   const { data, error } = await client()
     .from("leave_requests")
-    .select("id,leave_type,starts_on,ends_on,status,profiles!leave_requests_employee_id_fkey(full_name)")
+    .select("id,employee_id,leave_type,starts_on,ends_on,status,profiles!leave_requests_employee_id_fkey(full_name)")
     .eq("status", "pending")
     .order("created_at");
   if (error) throw error;
@@ -250,6 +251,7 @@ export async function listPendingLeaveRequests(): Promise<AdminLeaveRequest[]> {
     const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
     return {
       id: row.id,
+      employeeId: row.employee_id,
       leaveType: row.leave_type,
       startsOn: row.starts_on,
       endsOn: row.ends_on,
