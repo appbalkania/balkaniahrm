@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
     role?: string;
     teamId?: string | null;
     redirectTo?: string;
+    startDate?: string;
     ppsNumber?: string;
     dateOfBirth?: string;
     phoneNumber?: string;
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
   const employeeCode = body.employeeCode?.trim() || null;
   const role = body.role?.trim() ?? "employee";
   const teamId = body.teamId?.trim() || null;
+  const startDate = body.startDate?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
   if (!email) return json({ error: "Email is required." }, 400);
@@ -101,8 +103,15 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileError } = await adminClient
     .from("profiles")
-    .insert({ id: invited.user.id, full_name: fullName, employee_code: employeeCode, role, team_id: teamId })
-    .select("id,full_name,employee_code,role,team_id")
+    .insert({
+      id: invited.user.id,
+      full_name: fullName,
+      employee_code: employeeCode,
+      role,
+      team_id: teamId,
+      ...(startDate ? { start_date: startDate } : {}),
+    })
+    .select("id,full_name,employee_code,role,team_id,start_date")
     .single();
 
   if (profileError) {
@@ -134,5 +143,6 @@ Deno.serve(async (req) => {
     employeeCode: profile.employee_code,
     role: profile.role,
     teamId: profile.team_id,
+    startDate: profile.start_date,
   });
 });

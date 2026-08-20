@@ -22,12 +22,13 @@ export interface AdminEmployee {
   teamId: string | null;
   teamName: string | null;
   active: boolean;
+  startDate: string | null;
 }
 
 export async function listEmployees(): Promise<AdminEmployee[]> {
   const { data, error } = await client()
     .from("profiles")
-    .select("id,full_name,employee_code,role,team_id,active,teams!profiles_team_id_fkey(name)")
+    .select("id,full_name,employee_code,role,team_id,active,start_date,teams!profiles_team_id_fkey(name)")
     .order("full_name");
   if (error) throw error;
   return (data ?? []).map((row) => {
@@ -40,6 +41,7 @@ export async function listEmployees(): Promise<AdminEmployee[]> {
       teamId: row.team_id,
       teamName: team?.name ?? null,
       active: row.active,
+      startDate: row.start_date,
     };
   });
 }
@@ -55,6 +57,7 @@ export interface CreateEmployeeInput {
   email: string;
   role: string;
   teamId?: string | null;
+  startDate?: string;
   ppsNumber?: string;
   dateOfBirth?: string;
   phoneNumber?: string;
@@ -70,6 +73,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       role: input.role,
       teamId: input.teamId || null,
       redirectTo: `${window.location.origin}/welcome`,
+      startDate: input.startDate || undefined,
       ppsNumber: input.ppsNumber || undefined,
       dateOfBirth: input.dateOfBirth || undefined,
       phoneNumber: input.phoneNumber || undefined,
@@ -79,7 +83,16 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
   });
   if (error) return unwrapFunctionError(error);
   if (data?.error) throw new Error(data.error);
-  return { id: data.id, fullName: data.fullName, employeeCode: data.employeeCode, role: data.role, teamId: data.teamId ?? null, teamName: null, active: true };
+  return {
+    id: data.id,
+    fullName: data.fullName,
+    employeeCode: data.employeeCode,
+    role: data.role,
+    teamId: data.teamId ?? null,
+    teamName: null,
+    active: true,
+    startDate: data.startDate ?? null,
+  };
 }
 
 export interface EmployeeDetails {
@@ -129,14 +142,21 @@ export interface UpdateEmployeeInput {
   employeeCode: string;
   role: string;
   teamId?: string | null;
+  startDate?: string;
 }
 
 export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminEmployee> {
   const { data, error } = await client()
     .from("profiles")
-    .update({ full_name: input.fullName, employee_code: input.employeeCode, role: input.role, team_id: input.teamId || null })
+    .update({
+      full_name: input.fullName,
+      employee_code: input.employeeCode,
+      role: input.role,
+      team_id: input.teamId || null,
+      ...(input.startDate ? { start_date: input.startDate } : {}),
+    })
     .eq("id", input.id)
-    .select("id,full_name,employee_code,role,team_id,active,teams!profiles_team_id_fkey(name)")
+    .select("id,full_name,employee_code,role,team_id,active,start_date,teams!profiles_team_id_fkey(name)")
     .single();
   if (error) throw error;
   const team = Array.isArray(data.teams) ? data.teams[0] : data.teams;
@@ -148,6 +168,7 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminE
     teamId: data.team_id,
     teamName: team?.name ?? null,
     active: data.active,
+    startDate: data.start_date,
   };
 }
 

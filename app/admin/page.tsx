@@ -569,6 +569,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [role, setRole] = useState("employee");
   const [teamId, setTeamId] = useState("");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -599,6 +600,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
         email,
         role,
         teamId: teamId || null,
+        startDate,
         ppsNumber,
         dateOfBirth,
         phoneNumber,
@@ -650,6 +652,11 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </select>
             </label>
           )}
+          <label>
+            Start date
+            <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={saving} />
+          </label>
+          <p className="muted small">Leave accrues from this date, not from before it — set it to their actual first day.</p>
           <p className="muted small">Personal details (optional — can be completed later)</p>
           <label>
             PPS number
@@ -696,6 +703,7 @@ function EditEmployeeModal({
   const [role, setRole] = useState(employee.role);
   const [teamId, setTeamId] = useState(employee.teamId ?? "");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [startDate, setStartDate] = useState(employee.startDate ?? "");
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -725,7 +733,7 @@ function EditEmployeeModal({
     setError(null);
     setSaving(true);
     try {
-      const updated = await updateEmployee({ id: employee.id, fullName, employeeCode, role, teamId: teamId || null });
+      const updated = await updateEmployee({ id: employee.id, fullName, employeeCode, role, teamId: teamId || null, startDate: startDate || undefined });
       await upsertEmployeeDetails(employee.id, { ppsNumber, dateOfBirth, phoneNumber, address, placeOfBirth });
       onSaved(updated);
     } catch (err) {
@@ -769,6 +777,11 @@ function EditEmployeeModal({
               ))}
             </select>
           </label>
+          <label>
+            Start date
+            <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={saving} />
+          </label>
+          <p className="muted small">Leave accrues from this date, not from before it.</p>
           <p className="muted small">Personal details</p>
           <label>
             PPS number
