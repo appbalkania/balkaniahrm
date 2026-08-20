@@ -2,7 +2,7 @@ name: Sync upstream repository
 
 on:
   schedule:
-    - cron: "* * * * *" # Runs every minute (subject to GitHub runner scheduling delays)
+    - cron: "*/5 * * * *" # Runs every minute (subject to GitHub runner scheduling delays)
   workflow_dispatch:
 
 permissions:
