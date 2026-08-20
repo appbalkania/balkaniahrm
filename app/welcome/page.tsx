@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, setPassword, signOut } from "../../lib/auth-service";
 import { getMyProfile } from "../../lib/employee-service";
+import { errorMessage } from "../../lib/errors";
 
 type Status = "loading" | "ready" | "error" | "saving";
 
@@ -59,7 +60,7 @@ export default function WelcomePage() {
       const isAdminRole = profile?.role === "manager" || profile?.role === "hr_admin";
       router.replace(isAdminRole ? "/admin" : "/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't set your password.");
+      setError(errorMessage(err, "Couldn't set your password."));
       setStatus("ready");
     }
   }
