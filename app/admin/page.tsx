@@ -14,9 +14,11 @@ import {
   addHoliday,
   createEmployee,
   createTeam,
+  createWorkSchedule,
   deleteEmployee,
   deleteDisciplinaryAction,
   deleteHoliday,
+  deleteWorkSchedule,
   getDashboardStats,
   getEmployeeDetails,
   issueDisciplinaryAction,
@@ -1974,20 +1976,46 @@ function AddHolidayModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 function Schedules({ setNotice }: NoticeProps) {
   const [rows, setRows] = useState<AdminWorkSchedule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function load() {
+    listWorkSchedules()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load schedules.")));
+  }
 
   useEffect(() => {
-    let active = true;
-    listWorkSchedules()
-      .then((data) => active && setRows(data))
-      .catch((err) => active && setError(errorMessage(err, "Couldn't load schedules.")));
-    return () => {
-      active = false;
-    };
+    load();
   }, []);
+
+  async function handleDelete(row: AdminWorkSchedule) {
+    if (!window.confirm(`Delete the "${row.name}" shift template?`)) return;
+    setBusyId(row.id);
+    try {
+      await deleteWorkSchedule(row.id);
+      setNotice(`Shift template "${row.name}" deleted.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't delete the shift template."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <>
-      <Toolbar action="Create shift" onAction={() => setNotice("Shift templates connect directly to the work_schedules table.")} />
+      <Toolbar action="Create shift" onAction={() => setShowModal(true)} />
+      {showModal && (
+        <CreateShiftModal
+          onClose={() => setShowModal(false)}
+          onCreated={(schedule) => {
+            setShowModal(false);
+            setNotice(`Shift template "${schedule.name}" created.`);
+            load();
+          }}
+        />
+      )}
       {error ? (
         <ErrorState message={error} />
       ) : !rows ? (
@@ -2000,13 +2028,133 @@ function Schedules({ setNotice }: NoticeProps) {
           {rows.map((row) => (
             <div className="schedule-row" key={row.id}>
               <b>{row.name}</b>
-              <span>{row.branchName ?? "All branches"} · {row.startsAt.slice(0, 5)}–{row.endsAt.slice(0, 5)}</span>
+              <span>
+                {row.branchName ?? "All branches"} · {row.startsAt.slice(0, 5)}–{row.endsAt.slice(0, 5)} · {formatWorkingDays(row.workingDays)}
+              </span>
               <span className={`pill ${row.isDefault ? "success" : ""}`}>{row.isDefault ? "Default" : "Active"}</span>
+              <span className="row-actions">
+                <button className="icon-action" disabled={busyId === row.id} onClick={() => handleDelete(row)} aria-label={`Delete ${row.name}`}>
+                  <Icon name="trash" size={15} />
+                </button>
+              </span>
             </div>
           ))}
         </section>
       )}
     </>
+  );
+}
+
+// Postgres ISO day-of-week numbering (1 = Monday) to match the working_days
+// column's default of {1,2,3,4,5}.
+const weekdayOptions: Array<[number, string]> = [
+  [1, "Mon"],
+  [2, "Tue"],
+  [3, "Wed"],
+  [4, "Thu"],
+  [5, "Fri"],
+  [6, "Sat"],
+  [7, "Sun"],
+];
+
+function formatWorkingDays(days: number[]) {
+  if (!days.length) return "No days set";
+  if (days.length === 7) return "Every day";
+  const labels = new Map(weekdayOptions);
+  return [...days].sort((a, b) => a - b).map((d) => labels.get(d) ?? d).join(", ");
+}
+
+function CreateShiftModal({ onClose, onCreated }: { onClose: () => void; onCreated: (schedule: AdminWorkSchedule) => void }) {
+  const [name, setName] = useState("");
+  const [branchName, setBranchName] = useState("");
+  const [startsAt, setStartsAt] = useState("09:00");
+  const [endsAt, setEndsAt] = useState("17:00");
+  const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [isDefault, setIsDefault] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function toggleDay(day: number) {
+    setWorkingDays((current) => (current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort((a, b) => a - b)));
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!workingDays.length) {
+      setError("Pick at least one working day.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const schedule = await createWorkSchedule({
+        name,
+        branchName: branchName || null,
+        startsAt,
+        endsAt,
+        workingDays,
+        isDefault,
+      });
+      onCreated(schedule);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't create the shift template."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>Create shift</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">A working-hour template that can be assigned to employees.</p>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} placeholder="e.g. Warehouse day shift" />
+          </label>
+          <label>
+            Branch (optional)
+            <input value={branchName} onChange={(e) => setBranchName(e.target.value)} disabled={saving} placeholder="All branches" />
+          </label>
+          <label>
+            Starts at
+            <input type="time" required value={startsAt} onChange={(e) => setStartsAt(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Ends at
+            <input type="time" required value={endsAt} onChange={(e) => setEndsAt(e.target.value)} disabled={saving} />
+          </label>
+          <p className="muted small">Working days</p>
+          <div className="weekday-picker">
+            {weekdayOptions.map(([day, label]) => (
+              <button
+                key={day}
+                type="button"
+                className={workingDays.includes(day) ? "active" : ""}
+                onClick={() => toggleDay(day)}
+                disabled={saving}
+                aria-pressed={workingDays.includes(day)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} disabled={saving} />
+            Make this the default template
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Creating…" : "Create shift"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
