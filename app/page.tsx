@@ -6,7 +6,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "../components/icons";
 import { changePassword, getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
 import { errorMessage } from "../lib/errors";
-import { recordAttendance } from "../lib/attendance-service";
 import {
   getLeaveBalances,
   getLeaveRequests,
@@ -35,7 +34,6 @@ import type {
 
 type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays" | "changePassword";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "deactivated" | "signedIn";
-type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
 const stateText: Record<AttendanceState, string> = {
   not_started: "⏳ Ready to start your day",
@@ -43,15 +41,6 @@ const stateText: Record<AttendanceState, string> = {
   on_break: "☕ First break is active",
   on_lunch: "🍽️ Lunch break is active",
   complete: "✅ Workday complete",
-};
-
-const actionMap: Record<AttendanceAction, [string, AttendanceEventType]> = {
-  clockIn: ["🟢 Clock in", "clock_in"],
-  clockOut: ["🔴 Clock out", "clock_out"],
-  breakIn: ["☕ First break started", "break_start"],
-  breakOut: ["▶️ First break ended", "break_end"],
-  lunchIn: ["🍽️ Lunch started", "lunch_start"],
-  lunchOut: ["▶️ Lunch ended", "lunch_end"],
 };
 
 export default function Home() {
@@ -242,7 +231,6 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   const [onLeaveToday, setOnLeaveToday] = useState<OnLeaveEntry[]>([]);
   const [disciplinaryNotes, setDisciplinaryNotes] = useState<DisciplinaryNote[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyAction, setBusyAction] = useState<AttendanceAction | null>(null);
 
   async function refresh() {
     const now = new Date();
@@ -332,22 +320,6 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     return () => clearTimeout(id);
   }, [notice]);
 
-  async function handleAction(action: AttendanceAction) {
-    const [label, eventType] = actionMap[action];
-    setBusyAction(action);
-    try {
-      const session = await recordAttendance({ eventType, idempotencyKey: crypto.randomUUID(), source: "pwa" });
-      setAttendanceState(session.state);
-      const events = await getTodayEvents();
-      setTodayEvents(events);
-      setNotice(`${label} recorded at ${formatTime(new Date().toISOString())}.`);
-    } catch (err) {
-      setNotice(errorMessage(err, "Couldn't record that action."));
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
   async function handleLeaveSubmit(input: Parameters<typeof submitLeaveRequest>[0]) {
     await submitLeaveRequest(input);
     const requests = await getLeaveRequests();
@@ -391,7 +363,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
               <LeavesScreen profile={profile} balances={leaveBalances} requests={leaveRequests} onSubmit={handleLeaveSubmit} />
             )}
             {screen === "code" && (
-              <CodeScreen profile={profile} state={attendanceState} busyAction={busyAction} onAction={handleAction} />
+              <CodeScreen state={attendanceState} />
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} state={attendanceState} />}
             {screen === "profile" && (
@@ -680,17 +652,7 @@ function LeaveForm({
   );
 }
 
-function CodeScreen({
-  profile,
-  state,
-  busyAction,
-  onAction,
-}: {
-  profile: Profile;
-  state: AttendanceState;
-  busyAction: AttendanceAction | null;
-  onAction: (action: AttendanceAction) => void;
-}) {
+function CodeScreen({ state }: { state: AttendanceState }) {
   const [qr, setQr] = useState<{ token: string; expiresAt: string } | null>(null);
   const [qrError, setQrError] = useState(false);
 
@@ -738,13 +700,8 @@ function CodeScreen({
           {qrError ? "Couldn't refresh your code. Check your connection." : "Show this code on the shared Balkania tablet. It refreshes every 30 seconds."}
         </p>
       </section>
-      <div className="action-grid">
-        <Action label="🟢 Clock in" enabled={state === "not_started"} busy={busyAction === "clockIn"} onClick={() => onAction("clockIn")} />
-        <Action label="🔴 Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
-        <Action label="☕ First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
-        <Action label="▶️ First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
-        <Action label="🍽️ Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
-        <Action label="▶️ Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
+      <div className="notice">
+        <Icon name="warning" size={16} /> Clock in, clock out, breaks, and lunch must all be recorded at the kiosk — they can't be done from this app.
       </div>
     </>
   );
@@ -1023,15 +980,6 @@ function NavButton({ active, label, icon, onClick, primary }: { active: boolean;
         <Icon name={icon} size={primary ? 24 : 20} strokeWidth={primary ? 2 : 1.8} />
       </span>
       {label}
-    </button>
-  );
-}
-
-function Action({ label, enabled, danger, busy, onClick }: { label: string; enabled: boolean; danger?: boolean; busy?: boolean; onClick: () => void }) {
-  return (
-    <button className={`action ${danger ? "danger" : ""}`} disabled={!enabled || busy} onClick={onClick}>
-      <Icon name={busy ? "spinner" : "clock"} size={22} className={busy ? "spin" : undefined} />
-      <span>{label}</span>
     </button>
   );
 }
