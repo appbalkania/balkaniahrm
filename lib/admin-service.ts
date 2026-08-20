@@ -454,6 +454,11 @@ export async function issueDisciplinaryAction(input: IssueDisciplinaryInput): Pr
   if (error) throw error;
 }
 
+export async function deleteDisciplinaryAction(id: string): Promise<void> {
+  const { error } = await client().from("disciplinary_actions").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export interface DashboardStats {
   totalEmployees: number;
   workingNow: number;
