@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "../components/icons";
-import { getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
+import { changePassword, getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
 import { recordAttendance } from "../lib/attendance-service";
 import {
   getLeaveBalances,
@@ -32,7 +32,7 @@ import type {
   Profile,
 } from "../lib/domain";
 
-type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays";
+type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays" | "changePassword";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "deactivated" | "signedIn";
 type AttendanceAction = "clockIn" | "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
@@ -394,9 +394,15 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} state={attendanceState} />}
             {screen === "profile" && (
-              <ProfileScreen profile={profile} configured={configured} onDocuments={() => setScreen("documents")} />
+              <ProfileScreen
+                profile={profile}
+                configured={configured}
+                onDocuments={() => setScreen("documents")}
+                onChangePassword={() => setScreen("changePassword")}
+              />
             )}
             {screen === "documents" && <DocumentsScreen notes={disciplinaryNotes} onBack={() => setScreen("profile")} />}
+            {screen === "changePassword" && <ChangePasswordScreen onBack={() => setScreen("profile")} />}
             {screen === "holidays" && <HolidaysScreen onBack={() => setScreen("home")} />}
           </>
         )}
@@ -777,10 +783,12 @@ function ProfileScreen({
   profile,
   configured,
   onDocuments,
+  onChangePassword,
 }: {
   profile: Profile;
   configured: boolean;
   onDocuments: () => void;
+  onChangePassword: () => void;
 }) {
   return (
     <>
@@ -799,6 +807,7 @@ function ProfileScreen({
         <Setting label="Notifications" value="On" icon="bell" />
         <Setting label="Location" value="Off" icon="calendar" />
         <Setting label="Camera permission" value="Not granted" icon="qr" />
+        <Setting label="Change password" value="" icon="lock" chevron onClick={onChangePassword} />
         <Setting label="Documents" value="" icon="archive" chevron onClick={onDocuments} />
       </section>
       {(profile.role === "hr_admin" || profile.role === "manager") && (
@@ -850,6 +859,112 @@ function DocumentsScreen({ notes, onBack }: { notes: DisciplinaryNote[]; onBack:
           <p className="muted">Notices and records issued to you will appear here.</p>
         </section>
       )}
+    </>
+  );
+}
+
+function ChangePasswordScreen({ onBack }: { onBack: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSuccess(false);
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords don't match.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setError("New password must be different from your current password.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't change your password.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button className="text-button back" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} /> Back to profile
+      </button>
+      <h1>Change password</h1>
+      <p className="muted">Enter your current password and choose a new one.</p>
+
+      <form className="login-form" onSubmit={handleSubmit}>
+        <label>
+          <span>Current password</span>
+          <div className="input-with-icon">
+            <Icon name="lock" size={17} />
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="••••••••"
+              disabled={saving}
+            />
+          </div>
+        </label>
+        <label>
+          <span>New password</span>
+          <div className="input-with-icon">
+            <Icon name="lock" size={17} />
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="••••••••"
+              disabled={saving}
+            />
+          </div>
+        </label>
+        <label>
+          <span>Confirm new password</span>
+          <div className="input-with-icon">
+            <Icon name="lock" size={17} />
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              disabled={saving}
+            />
+          </div>
+        </label>
+        {error && <p className="form-error"><Icon name="warning" size={15} />{error}</p>}
+        {success && (
+          <p className="form-success">
+            <Icon name="check" size={15} /> Password updated.
+          </p>
+        )}
+        <button className="primary-button" type="submit" disabled={saving}>
+          {saving ? "Updating…" : "Update password"}
+        </button>
+      </form>
     </>
   );
 }
