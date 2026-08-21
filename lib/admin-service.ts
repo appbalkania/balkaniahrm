@@ -282,6 +282,33 @@ export async function listPendingLeaveRequests(): Promise<AdminLeaveRequest[]> {
   });
 }
 
+export async function listUpcomingLeave(): Promise<AdminLeaveRequest[]> {
+  // No status filter here (unlike listPendingLeaveRequests): a manager or HR
+  // admin planning ahead needs to see approved leave too, not just requests
+  // still awaiting a decision. RLS already scopes the visible rows to a
+  // manager's own reports vs. everyone for HR admin.
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await client()
+    .from("leave_requests")
+    .select("id,employee_id,leave_type,starts_on,ends_on,status,profiles!leave_requests_employee_id_fkey(full_name)")
+    .in("status", ["pending", "approved"])
+    .gte("ends_on", today)
+    .order("starts_on");
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      id: row.id,
+      employeeId: row.employee_id,
+      leaveType: row.leave_type,
+      startsOn: row.starts_on,
+      endsOn: row.ends_on,
+      status: row.status,
+      employeeName: profile?.full_name ?? "Unknown",
+    };
+  });
+}
+
 export async function reviewLeaveRequest(id: string, status: "approved" | "rejected", comment?: string) {
   const { data, error } = await client().rpc("review_leave_request", { p_request_id: id, p_status: status, p_comment: comment ?? null });
   if (error) throw error;

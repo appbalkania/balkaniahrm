@@ -38,6 +38,7 @@ import {
   listPendingLeaveRequests,
   listTeams,
   listTimesheet,
+  listUpcomingLeave,
   listWorkSchedules,
   purgeEmployee,
   regenerateDevicePin,
@@ -359,7 +360,12 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "attendance" && <Attendance setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "timesheets" && <Timesheets setNotice={setNotice} />}
         {module === "leaves" && (
-          <Leaves setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} currentUserId={profile.id} />
+          <Leaves
+            setNotice={setNotice}
+            isHrAdmin={profile.role === "hr_admin"}
+            isManager={profile.role === "manager"}
+            currentUserId={profile.id}
+          />
         )}
         {module === "holidays" && <Holidays setNotice={setNotice} />}
         {module === "disciplinary" && <Disciplinary setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
@@ -1339,23 +1345,65 @@ function Timesheets({ setNotice }: NoticeProps) {
   );
 }
 
-function Leaves({ setNotice, isHrAdmin, currentUserId }: NoticeProps & { isHrAdmin: boolean; currentUserId: string }) {
-  const [view, setView] = useState<"requests" | "entitlements">("requests");
+function Leaves({
+  setNotice,
+  isHrAdmin,
+  isManager,
+  currentUserId,
+}: NoticeProps & { isHrAdmin: boolean; isManager: boolean; currentUserId: string }) {
+  const [view, setView] = useState<"requests" | "upcoming" | "entitlements">("requests");
+  const showTabs = isHrAdmin || isManager;
 
   return (
     <>
-      {isHrAdmin && (
+      {showTabs && (
         <div className="module-tabs">
           <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Requests</button>
-          <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
+          <button className={view === "upcoming" ? "active" : ""} onClick={() => setView("upcoming")}>Upcoming leave</button>
+          {isHrAdmin && (
+            <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
+          )}
         </div>
       )}
-      {isHrAdmin && view === "entitlements" ? (
+      {showTabs && view === "upcoming" ? (
+        <UpcomingLeave />
+      ) : isHrAdmin && view === "entitlements" ? (
         <LeaveEntitlements setNotice={setNotice} />
       ) : (
         <LeaveRequests setNotice={setNotice} isHrAdmin={isHrAdmin} currentUserId={currentUserId} />
       )}
     </>
+  );
+}
+
+function UpcomingLeave() {
+  const [rows, setRows] = useState<AdminLeaveRequest[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listUpcomingLeave()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load upcoming leave.")));
+  }, []);
+
+  return error ? (
+    <ErrorState message={error} />
+  ) : !rows ? (
+    <LoadingPanel />
+  ) : rows.length === 0 ? (
+    <EmptyPanel icon="calendar" title="No upcoming leave" note="Approved and pending leave from today onward will appear here." />
+  ) : (
+    <section className="panel">
+      <div className="table-head"><b>Employee</b><b>Leave type</b><b>Dates</b><b>Status</b></div>
+      {rows.map((row) => (
+        <div className="table-row" key={row.id}>
+          <span>{row.employeeName}</span>
+          <span className="capitalize">{row.leaveType}</span>
+          <span>{formatDate(row.startsOn)} – {formatDate(row.endsOn)}</span>
+          <span className={`pill ${leaveStatusClass(row.status)}`}>{row.status}</span>
+        </div>
+      ))}
+    </section>
   );
 }
 
