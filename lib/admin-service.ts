@@ -23,12 +23,13 @@ export interface AdminEmployee {
   teamName: string | null;
   attendanceLocationId: string | null;
   attendanceLocationName: string | null;
+  selfServiceAttendance: boolean;
   active: boolean;
   startDate: string | null;
 }
 
 const EMPLOYEE_COLUMNS =
-  "id,full_name,employee_code,role,team_id,attendance_location_id,active,start_date,teams!profiles_team_id_fkey(name),attendance_locations!profiles_attendance_location_id_fkey(name)";
+  "id,full_name,employee_code,role,team_id,attendance_location_id,self_service_attendance,active,start_date,teams!profiles_team_id_fkey(name),attendance_locations!profiles_attendance_location_id_fkey(name)";
 
 function mapEmployee(row: {
   id: string;
@@ -37,6 +38,7 @@ function mapEmployee(row: {
   role: string;
   team_id: string | null;
   attendance_location_id: string | null;
+  self_service_attendance: boolean;
   active: boolean;
   start_date: string | null;
   teams: { name: string } | { name: string }[] | null;
@@ -53,6 +55,7 @@ function mapEmployee(row: {
     teamName: team?.name ?? null,
     attendanceLocationId: row.attendance_location_id,
     attendanceLocationName: location?.name ?? null,
+    selfServiceAttendance: row.self_service_attendance,
     active: row.active,
     startDate: row.start_date,
   };
@@ -76,6 +79,7 @@ export interface CreateEmployeeInput {
   role: string;
   teamId?: string | null;
   attendanceLocationId?: string | null;
+  selfServiceAttendance?: boolean;
   startDate?: string;
   ppsNumber?: string;
   dateOfBirth?: string;
@@ -92,6 +96,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       role: input.role,
       teamId: input.teamId || null,
       attendanceLocationId: input.attendanceLocationId || null,
+      selfServiceAttendance: input.selfServiceAttendance ?? false,
       redirectTo: `${window.location.origin}/welcome`,
       startDate: input.startDate || undefined,
       ppsNumber: input.ppsNumber || undefined,
@@ -112,6 +117,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
     teamName: null,
     attendanceLocationId: data.attendanceLocationId ?? null,
     attendanceLocationName: null,
+    selfServiceAttendance: data.selfServiceAttendance ?? false,
     active: true,
     startDate: data.startDate ?? null,
   };
@@ -165,6 +171,7 @@ export interface UpdateEmployeeInput {
   role: string;
   teamId?: string | null;
   attendanceLocationId?: string | null;
+  selfServiceAttendance?: boolean;
   startDate?: string;
 }
 
@@ -177,6 +184,7 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminE
       role: input.role,
       team_id: input.teamId || null,
       attendance_location_id: input.attendanceLocationId || null,
+      ...(input.selfServiceAttendance !== undefined ? { self_service_attendance: input.selfServiceAttendance } : {}),
       ...(input.startDate ? { start_date: input.startDate } : {}),
     })
     .eq("id", input.id)

@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
     role?: string;
     teamId?: string | null;
     attendanceLocationId?: string | null;
+    selfServiceAttendance?: boolean;
     redirectTo?: string;
     startDate?: string;
     ppsNumber?: string;
@@ -83,6 +84,7 @@ Deno.serve(async (req) => {
   const role = body.role?.trim() ?? "employee";
   const teamId = body.teamId?.trim() || null;
   const attendanceLocationId = body.attendanceLocationId?.trim() || null;
+  const selfServiceAttendance = body.selfServiceAttendance === true;
   const startDate = body.startDate?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
@@ -119,9 +121,10 @@ Deno.serve(async (req) => {
       role,
       team_id: teamId,
       attendance_location_id: attendanceLocationId,
+      self_service_attendance: selfServiceAttendance,
       ...(startDate ? { start_date: startDate } : {}),
     })
-    .select("id,full_name,employee_code,role,team_id,attendance_location_id,start_date")
+    .select("id,full_name,employee_code,role,team_id,attendance_location_id,self_service_attendance,start_date")
     .single();
 
   if (profileError) {
@@ -154,6 +157,7 @@ Deno.serve(async (req) => {
     role: profile.role,
     teamId: profile.team_id,
     attendanceLocationId: profile.attendance_location_id,
+    selfServiceAttendance: profile.self_service_attendance,
     startDate: profile.start_date,
   });
 });

@@ -431,7 +431,13 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
               <LeavesScreen profile={profile} balances={leaveBalances} requests={leaveRequests} onSubmit={handleLeaveSubmit} />
             )}
             {screen === "code" && (
-              <CodeScreen state={attendanceState} busyAction={busyAction} onAction={handleAction} onClockIn={handleClockIn} />
+              <CodeScreen
+                state={attendanceState}
+                selfServiceAttendance={profile.selfServiceAttendance}
+                busyAction={busyAction}
+                onAction={handleAction}
+                onClockIn={handleClockIn}
+              />
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} monthSessions={monthSessions} />}
             {screen === "profile" && (
@@ -722,11 +728,13 @@ function LeaveForm({
 
 function CodeScreen({
   state,
+  selfServiceAttendance,
   busyAction,
   onAction,
   onClockIn,
 }: {
   state: AttendanceState;
+  selfServiceAttendance: boolean;
   busyAction: AttendanceAction | "clockInOffice" | "clockInRemote" | null;
   onAction: (action: AttendanceAction) => void;
   onClockIn: (workMode: "office" | "remote") => void;
@@ -778,19 +786,27 @@ function CodeScreen({
           {qrError ? "Couldn't refresh your code. Check your connection." : "Show this code on the shared Balkania tablet. It refreshes every 30 seconds."}
         </p>
       </section>
-      <div className="action-grid">
-        <Action label="🟢 Office" enabled={state === "not_started"} busy={busyAction === "clockInOffice"} onClick={() => onClockIn("office")} />
-        <Action label="🏠 Remote" enabled={state === "not_started"} busy={busyAction === "clockInRemote"} onClick={() => onClockIn("remote")} />
-        <Action label="🔴 Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
-        <Action label="☕ First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
-        <Action label="▶️ First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
-        <Action label="🍽️ Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
-        <Action label="▶️ Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
-      </div>
-      {state === "not_started" && (
-        <p className="muted small">
-          "Office" confirms you're near an approved location before clocking in. It's only used to flag check-ins for HR review — not for ongoing tracking.
-        </p>
+      {selfServiceAttendance ? (
+        <>
+          <div className="action-grid">
+            <Action label="🟢 Office" enabled={state === "not_started"} busy={busyAction === "clockInOffice"} onClick={() => onClockIn("office")} />
+            <Action label="🏠 Remote" enabled={state === "not_started"} busy={busyAction === "clockInRemote"} onClick={() => onClockIn("remote")} />
+            <Action label="🔴 Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
+            <Action label="☕ First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
+            <Action label="▶️ First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
+            <Action label="🍽️ Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
+            <Action label="▶️ Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
+          </div>
+          {state === "not_started" && (
+            <p className="muted small">
+              "Office" confirms you're near an approved location before clocking in. It's only used to flag check-ins for HR review — not for ongoing tracking.
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="notice">
+          <Icon name="warning" size={16} /> Clock in, clock out, breaks, and lunch must all be recorded at the kiosk — they can't be done from this app.
+        </div>
       )}
     </>
   );
