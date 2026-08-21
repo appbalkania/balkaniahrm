@@ -6,6 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "../components/icons";
 import { changePassword, getCurrentSession, onAuthStateChange, signInWithPassword, signOut, supabaseConfigured } from "../lib/auth-service";
 import { errorMessage } from "../lib/errors";
+import { recordAttendance } from "../lib/attendance-service";
 import {
   getLeaveBalances,
   getLeaveRequests,
@@ -34,6 +35,7 @@ import type {
 
 type Screen = "home" | "leaves" | "code" | "tracking" | "profile" | "documents" | "holidays" | "changePassword";
 type AuthStatus = "loading" | "signedOut" | "needsSetup" | "deactivated" | "signedIn";
+type AttendanceAction = "clockOut" | "breakIn" | "breakOut" | "lunchIn" | "lunchOut";
 
 const stateText: Record<AttendanceState, string> = {
   not_started: "⏳ Ready to start your day",
@@ -41,6 +43,14 @@ const stateText: Record<AttendanceState, string> = {
   on_break: "☕ First break is active",
   on_lunch: "🍽️ Lunch break is active",
   complete: "✅ Workday complete",
+};
+
+const actionMap: Record<AttendanceAction, [string, AttendanceEventType]> = {
+  clockOut: ["🔴 Clock out", "clock_out"],
+  breakIn: ["☕ First break started", "break_start"],
+  breakOut: ["▶️ First break ended", "break_end"],
+  lunchIn: ["🍽️ Lunch started", "lunch_start"],
+  lunchOut: ["▶️ Lunch ended", "lunch_end"],
 };
 
 export default function Home() {
@@ -231,6 +241,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
   const [onLeaveToday, setOnLeaveToday] = useState<OnLeaveEntry[]>([]);
   const [disciplinaryNotes, setDisciplinaryNotes] = useState<DisciplinaryNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState<AttendanceAction | "clockInOffice" | "clockInRemote" | null>(null);
 
   async function refresh() {
     const now = new Date();
@@ -320,6 +331,63 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
     return () => clearTimeout(id);
   }, [notice]);
 
+  async function handleAction(action: AttendanceAction) {
+    const [label, eventType] = actionMap[action];
+    setBusyAction(action);
+    try {
+      const session = await recordAttendance({ eventType, idempotencyKey: crypto.randomUUID(), source: "pwa" });
+      setAttendanceState(session.state);
+      const events = await getTodayEvents();
+      setTodayEvents(events);
+      setNotice(`${label} recorded at ${formatTime(new Date().toISOString())}.`);
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't record that action."));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  // "Office" attempts a location fix so the server can confirm the employee is
+  // near an assigned attendance location; "remote" skips geolocation entirely
+  // -- there's nothing to check for someone who isn't expected to be on-site.
+  // Either way the clock-in always proceeds: a denied/failed location fix is
+  // flagged for HR review server-side, never blocked here.
+  async function handleClockIn(workMode: "office" | "remote") {
+    const busyKey = workMode === "office" ? "clockInOffice" : "clockInRemote";
+    setBusyAction(busyKey);
+    try {
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (workMode === "office" && typeof navigator !== "undefined" && "geolocation" in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 }),
+          );
+          latitude = position.coords.latitude;
+          longitude = position.coords.longitude;
+        } catch {
+          // Denied, timed out, or unavailable -- fall through and clock in anyway.
+        }
+      }
+      const session = await recordAttendance({
+        eventType: "clock_in",
+        idempotencyKey: crypto.randomUUID(),
+        source: "pwa",
+        workMode,
+        latitude,
+        longitude,
+      });
+      setAttendanceState(session.state);
+      const events = await getTodayEvents();
+      setTodayEvents(events);
+      setNotice(`🟢 Clock in recorded at ${formatTime(new Date().toISOString())}.`);
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't record that action."));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleLeaveSubmit(input: Parameters<typeof submitLeaveRequest>[0]) {
     await submitLeaveRequest(input);
     const requests = await getLeaveRequests();
@@ -363,7 +431,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
               <LeavesScreen profile={profile} balances={leaveBalances} requests={leaveRequests} onSubmit={handleLeaveSubmit} />
             )}
             {screen === "code" && (
-              <CodeScreen state={attendanceState} />
+              <CodeScreen state={attendanceState} busyAction={busyAction} onAction={handleAction} onClockIn={handleClockIn} />
             )}
             {screen === "tracking" && <TrackingScreen events={todayEvents} monthSessions={monthSessions} />}
             {screen === "profile" && (
@@ -652,7 +720,17 @@ function LeaveForm({
   );
 }
 
-function CodeScreen({ state }: { state: AttendanceState }) {
+function CodeScreen({
+  state,
+  busyAction,
+  onAction,
+  onClockIn,
+}: {
+  state: AttendanceState;
+  busyAction: AttendanceAction | "clockInOffice" | "clockInRemote" | null;
+  onAction: (action: AttendanceAction) => void;
+  onClockIn: (workMode: "office" | "remote") => void;
+}) {
   const [qr, setQr] = useState<{ token: string; expiresAt: string } | null>(null);
   const [qrError, setQrError] = useState(false);
 
@@ -700,9 +778,20 @@ function CodeScreen({ state }: { state: AttendanceState }) {
           {qrError ? "Couldn't refresh your code. Check your connection." : "Show this code on the shared Balkania tablet. It refreshes every 30 seconds."}
         </p>
       </section>
-      <div className="notice">
-        <Icon name="warning" size={16} /> Clock in, clock out, breaks, and lunch must all be recorded at the kiosk — they can't be done from this app.
+      <div className="action-grid">
+        <Action label="🟢 Office" enabled={state === "not_started"} busy={busyAction === "clockInOffice"} onClick={() => onClockIn("office")} />
+        <Action label="🏠 Remote" enabled={state === "not_started"} busy={busyAction === "clockInRemote"} onClick={() => onClockIn("remote")} />
+        <Action label="🔴 Clock out" enabled={state === "working"} danger busy={busyAction === "clockOut"} onClick={() => onAction("clockOut")} />
+        <Action label="☕ First break in" enabled={state === "working"} busy={busyAction === "breakIn"} onClick={() => onAction("breakIn")} />
+        <Action label="▶️ First break out" enabled={state === "on_break"} busy={busyAction === "breakOut"} onClick={() => onAction("breakOut")} />
+        <Action label="🍽️ Lunch in" enabled={state === "working"} busy={busyAction === "lunchIn"} onClick={() => onAction("lunchIn")} />
+        <Action label="▶️ Lunch out" enabled={state === "on_lunch"} busy={busyAction === "lunchOut"} onClick={() => onAction("lunchOut")} />
       </div>
+      {state === "not_started" && (
+        <p className="muted small">
+          "Office" confirms you're near an approved location before clocking in. It's only used to flag check-ins for HR review — not for ongoing tracking.
+        </p>
+      )}
     </>
   );
 }
@@ -1042,6 +1131,15 @@ function NavButton({ active, label, icon, onClick, primary }: { active: boolean;
         <Icon name={icon} size={primary ? 24 : 20} strokeWidth={primary ? 2 : 1.8} />
       </span>
       {label}
+    </button>
+  );
+}
+
+function Action({ label, enabled, danger, busy, onClick }: { label: string; enabled: boolean; danger?: boolean; busy?: boolean; onClick: () => void }) {
+  return (
+    <button className={`action ${danger ? "danger" : ""}`} disabled={!enabled || busy} onClick={onClick}>
+      <Icon name={busy ? "spinner" : "clock"} size={22} className={busy ? "spin" : undefined} />
+      <span>{label}</span>
     </button>
   );
 }
