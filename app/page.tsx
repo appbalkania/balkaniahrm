@@ -689,7 +689,7 @@ function CodeScreen({ state }: { state: AttendanceState }) {
       )}
       <section className="card qr-card">
         {qr ? (
-          <QRCodeSVG value={qr.token} size={176} marginSize={4} />
+          <QRCodeSVG value={qr.token} size={320} marginSize={3} />
         ) : (
           <div className="qr-placeholder">
             <Icon name={qrError ? "warning" : "spinner"} size={24} className={qrError ? undefined : "spin"} />
