@@ -123,13 +123,14 @@
   object-fit: contain;
 }
 
-/* Wider than the pairing card: six tiles need the room on a landscape tablet. */
-.kiosk-action-card { max-width: 720px; }
+/* Wider than the pairing card: still gives two tiles per row some breathing
+   room on a narrow portrait tablet. */
+.kiosk-action-card { max-width: 480px; }
 
 .kiosk-action-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
   margin-top: 8px;
 }
@@ -191,8 +192,11 @@
 .kiosk-light .kiosk-action-tile.tone-resume { border-color: rgba(43, 108, 214, 0.38); }
 .kiosk-light .kiosk-action-tile.tone-resume .kiosk-action-icon { background: rgba(43, 108, 214, 0.12); color: #2b6cd6; }
 
-@media (max-width: 700px) {
-  .kiosk-action-grid { grid-template-columns: 1fr 1fr; }
+/* Falls back to three columns on a wide viewport (e.g. a browser tab open
+   for testing, or the kiosk running unlocked on a landscape screen). */
+@media (min-width: 700px) {
+  .kiosk-action-card { max-width: 720px; }
+  .kiosk-action-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 .kiosk-mode-badge {
