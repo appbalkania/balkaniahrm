@@ -9,10 +9,10 @@ export const metadata: Metadata = {
   title: "Balkania Kiosk",
   description: "Shared attendance kiosk for clocking in and out",
   manifest: "/kiosk.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Balkania Kiosk" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Balkania Kiosk" },
 };
 
-export const viewport: Viewport = { themeColor: "#1c2260" };
+export const viewport: Viewport = { themeColor: "#f7f4ed" };
 
 export default function KioskLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return children;

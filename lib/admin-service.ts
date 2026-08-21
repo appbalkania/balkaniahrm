@@ -615,6 +615,11 @@ export async function setDeviceActive(deviceId: string, active: boolean): Promis
   if (error) throw error;
 }
 
+export async function deleteAttendanceDevice(deviceId: string): Promise<void> {
+  const { error } = await client().rpc("delete_attendance_device", { p_device_id: deviceId });
+  if (error) throw error;
+}
+
 export type DisciplinarySeverity = "verbal_warning" | "written_warning" | "final_warning" | "suspension" | "termination_notice";
 
 export interface AdminDisciplinaryAction {
