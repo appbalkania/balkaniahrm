@@ -28,7 +28,8 @@
   background: #f5f6fb;
 }
 .admin-auth-screen h1 { margin: 4px 0; font-size: 22px; }
-.admin-auth-screen .admin-brand { margin-bottom: 6px; color: var(--navy); }
+.admin-auth-screen .admin-brand { margin-bottom: 10px; color: var(--navy); font-size: 30px; gap: 12px; }
+.admin-auth-screen .admin-brand img { width: 48px; height: 48px; border-radius: 12px; }
 .admin-login-form { width: 100%; max-width: 320px; text-align: left; margin-top: 8px; }
 .admin-login-form label { display: block; margin: 12px 0 0; font-size: 13px; font-weight: 600; }
 .admin-login-form input { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; font-size: 14px; }
