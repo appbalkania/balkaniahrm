@@ -226,9 +226,12 @@ h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .danger-button { background: var(--danger-soft); color: var(--danger); margin-top: 10px; }
 
 .qr-card { text-align: center; }
-.qr-card svg { margin: 4px auto 14px; }
+/* Fluid rather than fixed: the code is scanned off the phone at arm's length
+   on a kiosk tablet, so it should fill the card on small screens instead of
+   sitting at a fixed 176px. Capped so it stays square on wide/desktop views. */
+.qr-card svg { display: block; width: min(100%, 340px); height: auto; margin: 4px auto 14px; }
 .qr-card h2 { margin-top: 4px; }
-.qr-placeholder { width: 176px; height: 176px; margin: 4px auto 14px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.qr-placeholder { width: min(100%, 340px); aspect-ratio: 1; margin: 4px auto 14px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 
 .action:disabled { opacity: 0.4; }
 .action.danger svg, .action.danger span { color: var(--danger); }
