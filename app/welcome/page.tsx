@@ -6,6 +6,7 @@ import { Icon } from "../../components/icons";
 import { getCurrentSession, onAuthStateChange, setPassword, signOut } from "../../lib/auth-service";
 import { getMyProfile } from "../../lib/employee-service";
 import { errorMessage } from "../../lib/errors";
+import { isAdminPortalRole } from "../../lib/domain";
 
 type Status = "loading" | "ready" | "error" | "saving";
 
@@ -57,7 +58,7 @@ export default function WelcomePage() {
     try {
       await setPassword(password);
       const profile = await getMyProfile();
-      const isAdminRole = profile?.role === "manager" || profile?.role === "hr_admin";
+      const isAdminRole = isAdminPortalRole(profile?.role);
       router.replace(isAdminRole ? "/admin" : "/");
     } catch (err) {
       setError(errorMessage(err, "Couldn't set your password."));

@@ -22,6 +22,7 @@ import {
   type Holiday,
   type MonthSessionSummary,
 } from "../lib/employee-service";
+import { isAdminPortalRole } from "../lib/domain";
 import type {
   AttendanceEventRecord,
   AttendanceEventType,
@@ -121,7 +122,7 @@ export default function Home() {
     };
   }, [configured]);
 
-  const isAdminRole = profile?.role === "manager" || profile?.role === "hr_admin";
+  const isAdminRole = isAdminPortalRole(profile?.role);
 
   useEffect(() => {
     if (status === "signedIn" && isAdminRole && !wantsEmployeeView) {
@@ -583,7 +584,7 @@ function LeavesScreen({
 }) {
   const [tab, setTab] = useState<"mine" | "team">("mine");
   const [openForm, setOpenForm] = useState(false);
-  const isManager = profile.role === "manager" || profile.role === "hr_admin";
+  const isManager = isAdminPortalRole(profile.role);
   const annual = balances.find((b) => b.leaveType === "annual");
   const available = annual ? annual.earned - annual.used : 0;
 
@@ -935,7 +936,7 @@ function ProfileScreen({
         <Setting label="Change password" value="" icon="lock" chevron onClick={onChangePassword} />
         <Setting label="Documents" value="" icon="archive" chevron onClick={onDocuments} />
       </section>
-      {(profile.role === "hr_admin" || profile.role === "manager") && (
+      {isAdminPortalRole(profile.role) && (
         <a className="secondary-button" href="/admin">
           <Icon name="layout" size={17} /> Open Balkania Admin
         </a>

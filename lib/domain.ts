@@ -36,7 +36,13 @@ export interface LeaveRequestInput {
   isHalfDay?: boolean;
 }
 
-export type EmployeeRole = "employee" | "manager" | "hr_admin" | "kiosk";
+export type EmployeeRole = "employee" | "team_lead" | "manager" | "hr_admin" | "kiosk";
+
+// Roles that supervise other people and therefore get the admin portal. Team
+// leads see the same views as managers, scoped by RLS to their own team.
+export function isAdminPortalRole(role: EmployeeRole | undefined | null): boolean {
+  return role === "team_lead" || role === "manager" || role === "hr_admin";
+}
 
 export interface Profile {
   id: string;

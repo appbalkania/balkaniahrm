@@ -222,55 +222,89 @@ export async function listManagers(): Promise<AdminManagerOption[]> {
   return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }));
 }
 
+// Anyone senior enough to run a team day-to-day. Managers and HR admins stay
+// eligible so a team can be led directly when there's no dedicated lead.
+export async function listTeamLeadCandidates(): Promise<AdminManagerOption[]> {
+  const { data, error } = await client()
+    .from("profiles")
+    .select("id,full_name")
+    .in("role", ["team_lead", "manager", "hr_admin"])
+    .eq("active", true)
+    .order("full_name");
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ id: row.id, fullName: row.full_name }));
+}
+
 export interface AdminTeam {
   id: string;
   name: string;
   managerId: string | null;
   managerName: string | null;
+  teamLeadId: string | null;
+  teamLeadName: string | null;
+}
+
+const TEAM_COLUMNS =
+  "id,name,manager_id,team_lead_id,manager:profiles!teams_manager_id_fkey(full_name),lead:profiles!teams_team_lead_id_fkey(full_name)";
+
+function mapTeam(row: {
+  id: string;
+  name: string;
+  manager_id: string | null;
+  team_lead_id: string | null;
+  manager?: { full_name: string } | { full_name: string }[] | null;
+  lead?: { full_name: string } | { full_name: string }[] | null;
+}): AdminTeam {
+  const manager = Array.isArray(row.manager) ? row.manager[0] : row.manager;
+  const lead = Array.isArray(row.lead) ? row.lead[0] : row.lead;
+  return {
+    id: row.id,
+    name: row.name,
+    managerId: row.manager_id,
+    managerName: manager?.full_name ?? null,
+    teamLeadId: row.team_lead_id,
+    teamLeadName: lead?.full_name ?? null,
+  };
 }
 
 export async function listTeams(): Promise<AdminTeam[]> {
-  const { data, error } = await client()
-    .from("teams")
-    .select("id,name,manager_id,profiles!teams_manager_id_fkey(full_name)")
-    .order("name");
+  const { data, error } = await client().from("teams").select(TEAM_COLUMNS).order("name");
   if (error) throw error;
-  return (data ?? []).map((row) => {
-    const manager = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-    return { id: row.id, name: row.name, managerId: row.manager_id, managerName: manager?.full_name ?? null };
-  });
+  return (data ?? []).map(mapTeam);
 }
 
 export interface CreateTeamInput {
   name: string;
   managerId?: string | null;
+  teamLeadId?: string | null;
 }
 
 export async function createTeam(input: CreateTeamInput): Promise<AdminTeam> {
   const { data, error } = await client()
     .from("teams")
-    .insert({ name: input.name, manager_id: input.managerId || null })
-    .select("id,name,manager_id")
+    .insert({ name: input.name, manager_id: input.managerId || null, team_lead_id: input.teamLeadId || null })
+    .select(TEAM_COLUMNS)
     .single();
   if (error) throw error;
-  return { id: data.id, name: data.name, managerId: data.manager_id, managerName: null };
+  return mapTeam(data);
 }
 
 export interface UpdateTeamInput {
   id: string;
   name: string;
   managerId?: string | null;
+  teamLeadId?: string | null;
 }
 
 export async function updateTeam(input: UpdateTeamInput): Promise<AdminTeam> {
   const { data, error } = await client()
     .from("teams")
-    .update({ name: input.name, manager_id: input.managerId || null })
+    .update({ name: input.name, manager_id: input.managerId || null, team_lead_id: input.teamLeadId || null })
     .eq("id", input.id)
-    .select("id,name,manager_id")
+    .select(TEAM_COLUMNS)
     .single();
   if (error) throw error;
-  return { id: data.id, name: data.name, managerId: data.manager_id, managerName: null };
+  return mapTeam(data);
 }
 
 export interface AdminAttendanceLocation {
@@ -345,6 +379,31 @@ export async function listPendingLeaveRequests(): Promise<AdminLeaveRequest[]> {
     .select("id,employee_id,leave_type,starts_on,ends_on,status,profiles!leave_requests_employee_id_fkey(full_name)")
     .eq("status", "pending")
     .order("created_at");
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      id: row.id,
+      employeeId: row.employee_id,
+      leaveType: row.leave_type,
+      startsOn: row.starts_on,
+      endsOn: row.ends_on,
+      status: row.status,
+      employeeName: profile?.full_name ?? "Unknown",
+    };
+  });
+}
+
+// Already-decided requests, newest first, so a manager can reverse a call a
+// team lead made. RLS scopes the rows: leads see their team (read-only in the
+// UI), managers see their teams, HR sees everyone.
+export async function listReviewedLeaveRequests(): Promise<AdminLeaveRequest[]> {
+  const { data, error } = await client()
+    .from("leave_requests")
+    .select("id,employee_id,leave_type,starts_on,ends_on,status,profiles!leave_requests_employee_id_fkey(full_name)")
+    .in("status", ["approved", "rejected"])
+    .order("created_at", { ascending: false })
+    .limit(50);
   if (error) throw error;
   return (data ?? []).map((row) => {
     const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
