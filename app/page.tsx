@@ -365,7 +365,7 @@ function AppShell({ profile, configured }: { profile: Profile; configured: boole
             {screen === "code" && (
               <CodeScreen state={attendanceState} />
             )}
-            {screen === "tracking" && <TrackingScreen events={todayEvents} state={attendanceState} />}
+            {screen === "tracking" && <TrackingScreen events={todayEvents} monthSessions={monthSessions} />}
             {screen === "profile" && (
               <ProfileScreen
                 profile={profile}
@@ -707,30 +707,92 @@ function CodeScreen({ state }: { state: AttendanceState }) {
   );
 }
 
-function TrackingScreen({ events, state }: { events: AttendanceEventRecord[]; state: AttendanceState }) {
+function TrackingScreen({
+  events,
+  monthSessions,
+}: {
+  events: AttendanceEventRecord[];
+  monthSessions: MonthSessionSummary[];
+}) {
+  const [tab, setTab] = useState<"today" | "month">("today");
   const durations = useMemo(() => computeDurations(events), [events]);
+
   return (
     <>
       <h1>My attendance</h1>
       <div className="tabs">
-        <button className="active">Today</button>
-        <button disabled>This month</button>
+        <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>Today</button>
+        <button className={tab === "month" ? "active" : ""} onClick={() => setTab("month")}>This month</button>
       </div>
-      <AttendanceCard title="Working time" value={durations.working} clockIn={durations.clockIn} clockOut={durations.clockOut} />
-      <AttendanceCard title="First break time" value={durations.firstBreak} clockIn={durations.breakIn} clockOut={durations.breakOut} />
-      <AttendanceCard title="Lunch break time" value={durations.lunch} clockIn={durations.lunchIn} clockOut={durations.lunchOut} />
+
+      {tab === "today" ? (
+        <>
+          <AttendanceCard title="Working time" value={durations.working} clockIn={durations.clockIn} clockOut={durations.clockOut} />
+          <AttendanceCard title="First break time" value={durations.firstBreak} clockIn={durations.breakIn} clockOut={durations.breakOut} />
+          <AttendanceCard title="Lunch break time" value={durations.lunch} clockIn={durations.lunchIn} clockOut={durations.lunchOut} />
+          <section className="card">
+            <h2>Today&apos;s events</h2>
+            {events.length ? (
+              <ul className="events">
+                {events.map((event, index) => (
+                  <li key={`${event.eventType}-${event.occurredAt}-${index}`}>
+                    {formatTime(event.occurredAt)} — {eventLabel(event.eventType)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No attendance events recorded today.</p>
+            )}
+          </section>
+        </>
+      ) : (
+        <MonthTab sessions={monthSessions} />
+      )}
+    </>
+  );
+}
+
+function MonthTab({ sessions }: { sessions: MonthSessionSummary[] }) {
+  const summary = useMemo(() => monthSummary(sessions), [sessions]);
+  const monthLabel = new Date().toLocaleDateString([], { month: "long", year: "numeric" });
+
+  return (
+    <>
       <section className="card">
-        <h2>Today&apos;s events</h2>
-        {events.length ? (
-          <ul className="events">
-            {events.map((event, index) => (
-              <li key={`${event.eventType}-${event.occurredAt}-${index}`}>
-                {formatTime(event.occurredAt)} — {eventLabel(event.eventType)}
+        <div className="row">
+          <h2>{monthLabel}</h2>
+          <Icon name="calendar" size={18} className="muted-icon" />
+        </div>
+        <div className="metric-pair">
+          <Metric label="Days worked" value={String(summary.daysWorked)} />
+          <Metric label="Total hours" value={summary.totalHours} />
+        </div>
+        <div className="metric-pair">
+          <Metric label="Avg. check in" value={summary.avgCheckIn} />
+          <Metric label="Avg. check out" value={summary.avgCheckOut} />
+        </div>
+        <div className="metric-pair">
+          <Metric label="Avg. day" value={summary.avgDay} />
+          <Metric label="Incomplete" value={String(summary.incomplete)} />
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Daily breakdown</h2>
+        {summary.days.length ? (
+          <ul className="events month-days">
+            {summary.days.map((day) => (
+              <li key={day.workDate}>
+                <span>{formatDate(day.workDate)}</span>
+                <span className="muted small">
+                  {day.clockIn} – {day.clockOut}
+                </span>
+                <b>{day.hours}</b>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No attendance events recorded today.</p>
+          <p className="muted">No attendance recorded this month yet.</p>
         )}
       </section>
     </>
@@ -1103,6 +1165,48 @@ function averageTimeOfDay(timestamps: string[]) {
     .padStart(2, "0");
   const minutes = (avg % 60).toString().padStart(2, "0");
   return `${hours}:${minutes}`;
+}
+
+function monthSummary(sessions: MonthSessionSummary[]) {
+  // Only completed days count toward totals — a session that's still open (or
+  // was never clocked out) has no meaningful duration, so counting it would
+  // silently understate or inflate the month. Those surface as "Incomplete".
+  const worked = sessions.filter((s) => s.clockedInAt);
+  const complete = worked.filter((s) => s.clockedOutAt);
+
+  const totalMinutes = complete.reduce(
+    (sum, s) => sum + Math.max(0, (new Date(s.clockedOutAt!).getTime() - new Date(s.clockedInAt!).getTime()) / 60000),
+    0,
+  );
+
+  const days = [...worked]
+    .sort((a, b) => b.workDate.localeCompare(a.workDate))
+    .map((s) => {
+      const minutes = s.clockedOutAt
+        ? Math.max(0, (new Date(s.clockedOutAt).getTime() - new Date(s.clockedInAt!).getTime()) / 60000)
+        : null;
+      return {
+        workDate: s.workDate,
+        clockIn: formatTime(s.clockedInAt!),
+        clockOut: s.clockedOutAt ? formatTime(s.clockedOutAt) : "—",
+        hours: minutes === null ? "Open" : formatHours(minutes),
+      };
+    });
+
+  return {
+    daysWorked: worked.length,
+    incomplete: worked.length - complete.length,
+    totalHours: formatHours(totalMinutes),
+    avgDay: complete.length ? formatHours(totalMinutes / complete.length) : "0h 0m",
+    avgCheckIn: averageTimeOfDay(worked.map((s) => s.clockedInAt).filter((v): v is string => !!v)),
+    avgCheckOut: averageTimeOfDay(complete.map((s) => s.clockedOutAt).filter((v): v is string => !!v)),
+    days,
+  };
+}
+
+function formatHours(minutes: number) {
+  const rounded = Math.round(minutes);
+  return `${Math.floor(rounded / 60)}h ${rounded % 60}m`;
 }
 
 function buildHeatmap(sessions: MonthSessionSummary[]) {

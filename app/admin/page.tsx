@@ -18,6 +18,7 @@ import {
   createTeam,
   createWorkSchedule,
   deleteAsset,
+  deleteAttendanceDevice,
   deleteEmployee,
   deleteDisciplinaryAction,
   deleteHoliday,
@@ -2565,6 +2566,20 @@ function Devices({ setNotice }: NoticeProps) {
     }
   }
 
+  async function handleDelete(device: AdminDevice) {
+    if (!window.confirm(`Delete "${device.label}"? If this tablet is still in use it will stop recording attendance and can't be re-paired with its current PIN.`)) return;
+    setBusyId(device.id);
+    try {
+      await deleteAttendanceDevice(device.id);
+      setNotice(`${device.label} deleted.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't delete the device."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       <Toolbar action="Register kiosk" onAction={() => setShowRegisterModal(true)} />
@@ -2605,6 +2620,9 @@ function Devices({ setNotice }: NoticeProps) {
                 </button>
                 <button className="outline-button" disabled={busyId === device.id} onClick={() => handleToggleActive(device)}>
                   {device.active ? "Deactivate" : "Reactivate"}
+                </button>
+                <button className="icon-action reject" disabled={busyId === device.id} onClick={() => handleDelete(device)} aria-label={`Delete ${device.label}`} title="Delete device">
+                  <Icon name="trash" size={15} />
                 </button>
               </span>
             </div>

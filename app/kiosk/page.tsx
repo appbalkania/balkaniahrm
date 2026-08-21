@@ -180,7 +180,7 @@ export default function KioskPage() {
 
   if (phase === "loading") {
     return (
-      <main className="kiosk kiosk-center">
+      <main className="kiosk kiosk-center kiosk-light">
         <Icon name="spinner" size={28} className="spin" />
       </main>
     );
@@ -188,9 +188,9 @@ export default function KioskPage() {
 
   if (phase === "pairing") {
     return (
-      <main className="kiosk kiosk-center">
+      <main className="kiosk kiosk-center kiosk-light">
         <div className="kiosk-pair-card">
-          <img src="/icon-white.png" alt="Balkania" className="kiosk-logo" />
+          <img src="/icon-color.png" alt="Balkania" className="kiosk-logo" />
           <h1>Pair this device</h1>
           <p className="kiosk-muted">Enter the PIN shown when this kiosk was registered in Balkania Admin.</p>
           {reauthBanner && (
@@ -225,9 +225,9 @@ export default function KioskPage() {
 
   if (phase === "select-action") {
     return (
-      <main className="kiosk kiosk-center">
+      <main className="kiosk kiosk-center kiosk-light">
         <div className="kiosk-pair-card kiosk-action-card">
-          <img src="/icon-white.png" alt="Balkania" className="kiosk-logo" />
+          <img src="/icon-color.png" alt="Balkania" className="kiosk-logo" />
           <h1>What are you recording?</h1>
           <p className="kiosk-muted">Choose an action, then scan each employee&apos;s code.</p>
           <div className="kiosk-action-grid">

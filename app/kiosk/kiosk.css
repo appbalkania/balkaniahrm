@@ -6,6 +6,11 @@
   --kiosk-ink: #f4f5fb;
   --kiosk-muted: #9aa1c4;
   --kiosk-success: #33c07d;
+  --kiosk-cream: #f7f4ed;
+  --kiosk-cream-panel: #fffdf9;
+  --kiosk-cream-ink: #1a1f3d;
+  --kiosk-cream-muted: #6f7590;
+  --kiosk-cream-line: #e2ddd1;
 }
 
 .kiosk {
@@ -17,6 +22,30 @@
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
+
+/* The pairing and action-select screens sit on cream — navy full-bleed was
+   harsh on a tablet that stays awake all day. The scanner screen stays dark:
+   a light surround washes out the camera preview and hurts scan contrast. */
+.kiosk-light {
+  background: var(--kiosk-cream);
+  color: var(--kiosk-cream-ink);
+}
+.kiosk-light .kiosk-muted { color: var(--kiosk-cream-muted); }
+
+.kiosk-light .kiosk-pin-input {
+  border-color: var(--kiosk-cream-line);
+  background: var(--kiosk-cream-panel);
+  color: var(--kiosk-cream-ink);
+}
+.kiosk-light .kiosk-pin-input:focus { border-color: var(--kiosk-coral); }
+
+.kiosk-light .kiosk-secondary-button {
+  border-color: var(--kiosk-cream-line);
+  background: var(--kiosk-cream-panel);
+  color: var(--kiosk-cream-ink);
+}
+
+.kiosk-light .kiosk-text-button { color: var(--kiosk-cream-muted); }
 
 .kiosk-center {
   display: flex;
@@ -144,6 +173,24 @@
 .kiosk-action-tile.tone-resume .kiosk-action-icon { background: rgba(93, 156, 255, 0.16); color: #7fb0ff; }
 .kiosk-action-tile.tone-resume { border-color: rgba(93, 156, 255, 0.32); }
 
+/* On cream the tiles need a panel fill and darker icon tints -- the light
+   pastels above are only legible against the dark background. */
+.kiosk-light .kiosk-action-tile {
+  background: var(--kiosk-cream-panel);
+  border-color: var(--kiosk-cream-line);
+  color: var(--kiosk-cream-ink);
+  box-shadow: 0 1px 2px rgba(26, 31, 61, 0.04);
+}
+.kiosk-light .kiosk-action-icon { background: rgba(26, 31, 61, 0.06); color: var(--kiosk-cream-ink); }
+.kiosk-light .kiosk-action-tile.tone-start { border-color: rgba(31, 157, 90, 0.4); }
+.kiosk-light .kiosk-action-tile.tone-start .kiosk-action-icon { background: rgba(31, 157, 90, 0.12); color: #1f9d5a; }
+.kiosk-light .kiosk-action-tile.tone-stop { border-color: rgba(209, 60, 60, 0.4); }
+.kiosk-light .kiosk-action-tile.tone-stop .kiosk-action-icon { background: rgba(209, 60, 60, 0.12); color: #d13c3c; }
+.kiosk-light .kiosk-action-tile.tone-pause { border-color: rgba(176, 116, 10, 0.38); }
+.kiosk-light .kiosk-action-tile.tone-pause .kiosk-action-icon { background: rgba(176, 116, 10, 0.12); color: #b0740a; }
+.kiosk-light .kiosk-action-tile.tone-resume { border-color: rgba(43, 108, 214, 0.38); }
+.kiosk-light .kiosk-action-tile.tone-resume .kiosk-action-icon { background: rgba(43, 108, 214, 0.12); color: #2b6cd6; }
+
 @media (max-width: 700px) {
   .kiosk-action-grid { grid-template-columns: 1fr 1fr; }
 }
@@ -195,6 +242,12 @@
   color: #ff8a8a;
   font-size: 14px;
   margin: 0;
+}
+.kiosk-light .kiosk-error { color: #c62828; }
+.kiosk-light .kiosk-banner {
+  background: #fdeceb;
+  border-color: #f3c3c3;
+  color: #8f2020;
 }
 
 .kiosk-banner {
