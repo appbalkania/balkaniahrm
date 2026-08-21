@@ -38,6 +38,8 @@ import {
   listLeaveBalances,
   listManagers,
   listPendingLeaveRequests,
+  listReviewedLeaveRequests,
+  listTeamLeadCandidates,
   listTeams,
   listTimesheet,
   listUpcomingLeave,
@@ -190,7 +192,7 @@ export default function AdminPage() {
         if (!active) return;
         if (p && !p.active) {
           setStatus("deactivated");
-        } else if (p && (p.role === "manager" || p.role === "hr_admin")) {
+        } else if (p && (p.role === "manager" || p.role === "team_lead" || p.role === "hr_admin")) {
           setProfile(p);
           setStatus("signedIn");
         } else {
@@ -296,11 +298,16 @@ function AdminLogin({ configured }: { configured: boolean }) {
 const MANAGER_MODULES: Module[] = ["attendance", "timesheets", "leaves", "disciplinary"];
 
 function AdminShell({ profile }: { profile: Profile }) {
+  // Team leads get the same portal view as managers, scoped by RLS to their
+  // own team. What differs is authority, not navigation: only a manager can
+  // reverse a decided leave request or withdraw a disciplinary action.
   const isManager = profile.role === "manager";
+  const isTeamLead = profile.role === "team_lead";
+  const isSupervisor = isManager || isTeamLead;
   const visibleGroups = moduleGroups
     .map((group) => ({
       label: group.label,
-      items: isManager ? group.items.filter(([id]) => MANAGER_MODULES.includes(id)) : group.items,
+      items: isSupervisor ? group.items.filter(([id]) => MANAGER_MODULES.includes(id)) : group.items,
     }))
     .filter((group) => group.items.length > 0);
   const [module, setModule] = useState<Module>(visibleGroups[0].items[0][0]);
@@ -369,12 +376,15 @@ function AdminShell({ profile }: { profile: Profile }) {
           <Leaves
             setNotice={setNotice}
             isHrAdmin={profile.role === "hr_admin"}
-            isManager={profile.role === "manager"}
+            isManager={isManager}
+            isTeamLead={isTeamLead}
             currentUserId={profile.id}
           />
         )}
         {module === "holidays" && <Holidays setNotice={setNotice} />}
-        {module === "disciplinary" && <Disciplinary setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
+        {module === "disciplinary" && (
+          <Disciplinary setNotice={setNotice} canWithdraw={profile.role === "hr_admin" || isManager} />
+        )}
         {module === "performance" && (
           <EmptyPanel icon="chart" title="Performance Review" note="Goals, reviews, and feedback cycles are coming in a later release." />
         )}
@@ -687,6 +697,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
             Role
             <select value={role} onChange={(e) => setRole(e.target.value)} disabled={saving}>
               <option value="employee">Employee</option>
+              <option value="team_lead">Team lead</option>
               <option value="manager">Manager</option>
               <option value="hr_admin">HR admin</option>
               <option value="kiosk">Kiosk</option>
@@ -844,6 +855,7 @@ function EditEmployeeModal({
             Role
             <select value={role} onChange={(e) => setRole(e.target.value)} disabled={saving}>
               <option value="employee">Employee</option>
+              <option value="team_lead">Team lead</option>
               <option value="manager">Manager</option>
               <option value="hr_admin">HR admin</option>
               <option value="kiosk">Kiosk</option>
@@ -965,13 +977,13 @@ function Teams({ setNotice }: NoticeProps) {
         <EmptyPanel icon="users" title="No teams yet" note="Create a team and assign a manager so employees can be added to it." />
       ) : (
         <section className="panel">
-          <div className="table-head cols-5"><b>Team</b><b>Manager</b><b>Members</b><b>Status</b><b>Actions</b></div>
+          <div className="table-head cols-5"><b>Team</b><b>Team lead</b><b>Manager</b><b>Members</b><b>Actions</b></div>
           {teams.map((team) => (
             <div className="table-row cols-5" key={team.id}>
               <span>{team.name}</span>
-              <span>{team.managerName ?? "Unassigned"}</span>
+              <span>{team.teamLeadName ?? <span className="pill pending">No lead</span>}</span>
+              <span>{team.managerName ?? <span className="pill pending">No manager</span>}</span>
               <span>{memberCounts[team.id] ?? 0}</span>
-              <span className={`pill ${team.managerId ? "success" : "pending"}`}>{team.managerId ? "Managed" : "No manager"}</span>
               <span className="row-actions">
                 <button className="icon-action" onClick={() => setEditingTeam(team)} aria-label={`Edit ${team.name}`}>
                   <Icon name="edit" size={15} />
@@ -988,7 +1000,9 @@ function Teams({ setNotice }: NoticeProps) {
 function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: (team: AdminTeam) => void }) {
   const [name, setName] = useState("");
   const [managerId, setManagerId] = useState("");
+  const [teamLeadId, setTeamLeadId] = useState("");
   const [managers, setManagers] = useState<AdminManagerOption[]>([]);
+  const [leadCandidates, setLeadCandidates] = useState<AdminManagerOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -996,14 +1010,21 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
     listManagers()
       .then(setManagers)
       .catch(() => setManagers([]));
+    listTeamLeadCandidates()
+      .then(setLeadCandidates)
+      .catch(() => setLeadCandidates([]));
   }, []);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (teamLeadId && teamLeadId === managerId) {
+      setError("The team lead and manager must be different people — a manager can't override their own decisions.");
+      return;
+    }
     setError(null);
     setSaving(true);
     try {
-      const team = await createTeam({ name, managerId: managerId || null });
+      const team = await createTeam({ name, managerId: managerId || null, teamLeadId: teamLeadId || null });
       onCreated(team);
     } catch (err) {
       setError(errorMessage(err, "Couldn't create the team."));
@@ -1019,11 +1040,20 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <h2>Create team</h2>
           <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>
-        <p className="muted small">Employees assigned to this team are managed by whoever you pick here.</p>
+        <p className="muted small">The team lead handles this team day to day. The manager sits above them and can reverse a lead&apos;s leave decision.</p>
         <form className="admin-login-form" onSubmit={handleSubmit}>
           <label>
             Team name
             <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Team lead
+            <select value={teamLeadId} onChange={(e) => setTeamLeadId(e.target.value)} disabled={saving}>
+              <option value="">Assign later</option>
+              {leadCandidates.map((m) => (
+                <option key={m.id} value={m.id}>{m.fullName}</option>
+              ))}
+            </select>
           </label>
           <label>
             Manager
@@ -1056,7 +1086,9 @@ function EditTeamModal({
 }) {
   const [name, setName] = useState(team.name);
   const [managerId, setManagerId] = useState(team.managerId ?? "");
+  const [teamLeadId, setTeamLeadId] = useState(team.teamLeadId ?? "");
   const [managers, setManagers] = useState<AdminManagerOption[]>([]);
+  const [leadCandidates, setLeadCandidates] = useState<AdminManagerOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1064,14 +1096,21 @@ function EditTeamModal({
     listManagers()
       .then(setManagers)
       .catch(() => setManagers([]));
+    listTeamLeadCandidates()
+      .then(setLeadCandidates)
+      .catch(() => setLeadCandidates([]));
   }, []);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (teamLeadId && teamLeadId === managerId) {
+      setError("The team lead and manager must be different people — a manager can't override their own decisions.");
+      return;
+    }
     setError(null);
     setSaving(true);
     try {
-      const updated = await updateTeam({ id: team.id, name, managerId: managerId || null });
+      const updated = await updateTeam({ id: team.id, name, managerId: managerId || null, teamLeadId: teamLeadId || null });
       onSaved(updated);
     } catch (err) {
       setError(errorMessage(err, "Couldn't save changes."));
@@ -1091,6 +1130,15 @@ function EditTeamModal({
           <label>
             Team name
             <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Team lead
+            <select value={teamLeadId} onChange={(e) => setTeamLeadId(e.target.value)} disabled={saving}>
+              <option value="">Unassigned</option>
+              {leadCandidates.map((m) => (
+                <option key={m.id} value={m.id}>{m.fullName}</option>
+              ))}
+            </select>
           </label>
           <label>
             Manager
@@ -1411,10 +1459,14 @@ function Leaves({
   setNotice,
   isHrAdmin,
   isManager,
+  isTeamLead,
   currentUserId,
-}: NoticeProps & { isHrAdmin: boolean; isManager: boolean; currentUserId: string }) {
-  const [view, setView] = useState<"requests" | "upcoming" | "entitlements">("requests");
-  const showTabs = isHrAdmin || isManager;
+}: NoticeProps & { isHrAdmin: boolean; isManager: boolean; isTeamLead: boolean; currentUserId: string }) {
+  const [view, setView] = useState<"requests" | "upcoming" | "decided" | "entitlements">("requests");
+  const showTabs = isHrAdmin || isManager || isTeamLead;
+  // Only a manager (or HR) can revisit a decision -- a team lead can't undo
+  // their own call, which is what the server enforces too.
+  const canOverride = isHrAdmin || isManager;
 
   return (
     <>
@@ -1422,6 +1474,7 @@ function Leaves({
         <div className="module-tabs">
           <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Requests</button>
           <button className={view === "upcoming" ? "active" : ""} onClick={() => setView("upcoming")}>Upcoming leave</button>
+          <button className={view === "decided" ? "active" : ""} onClick={() => setView("decided")}>Decided</button>
           {isHrAdmin && (
             <button className={view === "entitlements" ? "active" : ""} onClick={() => setView("entitlements")}>Entitlements</button>
           )}
@@ -1429,12 +1482,84 @@ function Leaves({
       )}
       {showTabs && view === "upcoming" ? (
         <UpcomingLeave />
+      ) : showTabs && view === "decided" ? (
+        <DecidedLeave setNotice={setNotice} canOverride={canOverride} />
       ) : isHrAdmin && view === "entitlements" ? (
         <LeaveEntitlements setNotice={setNotice} />
       ) : (
         <LeaveRequests setNotice={setNotice} isHrAdmin={isHrAdmin} currentUserId={currentUserId} />
       )}
     </>
+  );
+}
+
+function DecidedLeave({ setNotice, canOverride }: NoticeProps & { canOverride: boolean }) {
+  const [rows, setRows] = useState<AdminLeaveRequest[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function load() {
+    listReviewedLeaveRequests()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load decided leave requests.")));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function override(row: AdminLeaveRequest, status: "approved" | "rejected") {
+    const verb = status === "approved" ? "Approve" : "Reject";
+    if (!window.confirm(`${verb} ${row.employeeName}'s ${row.leaveType} leave instead? This reverses the earlier decision and adjusts their balance.`)) return;
+    setBusyId(row.id);
+    try {
+      await reviewLeaveRequest(row.id, status);
+      setNotice(`${row.employeeName}'s leave request is now ${status}.`);
+      load();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't change the decision."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return error ? (
+    <ErrorState message={error} />
+  ) : !rows ? (
+    <LoadingPanel />
+  ) : rows.length === 0 ? (
+    <EmptyPanel icon="calendar" title="Nothing decided yet" note="Approved and rejected requests appear here." />
+  ) : (
+    <section className="panel">
+      <div className="panel-title">
+        <h2>Decided requests</h2>
+        {canOverride && <span className="filter">You can reverse a decision</span>}
+      </div>
+      <div className="table-head"><b>Employee</b><b>Leave type</b><b>Dates</b><b>{canOverride ? "Decision" : "Status"}</b></div>
+      {rows.map((row) => (
+        <div className="table-row" key={row.id}>
+          <span>{row.employeeName}</span>
+          <span className="capitalize">{row.leaveType}</span>
+          <span>{formatDate(row.startsOn)} – {formatDate(row.endsOn)}</span>
+          {canOverride ? (
+            <span className="row-actions">
+              <span className={`pill ${leaveStatusClass(row.status)}`}>{row.status}</span>
+              <button
+                className={`icon-action ${row.status === "approved" ? "reject" : "approve"}`}
+                disabled={busyId === row.id}
+                onClick={() => override(row, row.status === "approved" ? "rejected" : "approved")}
+                aria-label={`Change ${row.employeeName}'s leave to ${row.status === "approved" ? "rejected" : "approved"}`}
+                title={row.status === "approved" ? "Reverse to rejected" : "Reverse to approved"}
+              >
+                <Icon name="swap" size={15} />
+              </button>
+            </span>
+          ) : (
+            <span className={`pill ${leaveStatusClass(row.status)}`}>{row.status}</span>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -1816,7 +1941,7 @@ const severityPillClass: Record<DisciplinarySeverity, string> = {
   termination_notice: "danger",
 };
 
-function Disciplinary({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
+function Disciplinary({ setNotice, canWithdraw }: NoticeProps & { canWithdraw: boolean }) {
   const [rows, setRows] = useState<AdminDisciplinaryAction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -1867,16 +1992,16 @@ function Disciplinary({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boole
         <EmptyPanel icon="warning" title="No disciplinary actions" note="Actions you issue to employees will appear here." />
       ) : (
         <section className="panel">
-          <div className={`table-head ${isHrAdmin ? "cols-5" : ""}`}>
-            <b>Employee</b><b>Severity</b><b>Reason</b><b>Date</b>{isHrAdmin && <b></b>}
+          <div className={`table-head ${canWithdraw ? "cols-5" : ""}`}>
+            <b>Employee</b><b>Severity</b><b>Reason</b><b>Date</b>{canWithdraw && <b></b>}
           </div>
           {rows.map((row) => (
-            <div className={`table-row ${isHrAdmin ? "cols-5" : ""}`} key={row.id}>
+            <div className={`table-row ${canWithdraw ? "cols-5" : ""}`} key={row.id}>
               <span><i className="person-dot">{row.employeeName[0]}</i>{row.employeeName}</span>
               <span><span className={`pill ${severityPillClass[row.severity]}`}>{severityLabels[row.severity]}</span></span>
               <span>{row.reason}</span>
               <span>{formatDate(row.occurredOn)}</span>
-              {isHrAdmin && (
+              {canWithdraw && (
                 <span className="row-actions">
                   <button className="icon-action reject" disabled={busyId === row.id} onClick={() => handleDelete(row)} aria-label={`Delete disciplinary record for ${row.employeeName}`}>
                     <Icon name="trash" size={15} />
