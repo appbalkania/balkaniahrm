@@ -14,6 +14,7 @@ import {
   addHoliday,
   assignAsset,
   createAsset,
+  createAttendanceLocation,
   createEmployee,
   createTeam,
   createWorkSchedule,
@@ -30,6 +31,7 @@ import {
   listAssetHistory,
   listAssets,
   listAttendanceDevices,
+  listAttendanceLocations,
   listAttendanceSessions,
   listDisciplinaryActions,
   listEmployees,
@@ -50,10 +52,12 @@ import {
   setDeviceActive,
   setEmployeeActive,
   setLeaveEntitlement,
+  updateAttendanceLocation,
   updateEmployee,
   updateTeam,
   upsertEmployeeDetails,
   type AdminAsset,
+  type AdminAttendanceLocation,
   type AdminAttendanceSession,
   type AdminDevice,
   type AssetAssignmentRecord,
@@ -110,6 +114,7 @@ type Module =
   | "timesheets"
   | "schedules"
   | "devices"
+  | "locations"
   | "assets"
   | "settings"
   | "integrations";
@@ -147,6 +152,7 @@ const moduleGroups: Array<{ label: string; items: ModuleEntry[] }> = [
       ["timesheets", "Timesheets", "chart"],
       ["schedules", "Work schedules", "swap"],
       ["devices", "Kiosk devices", "device"],
+      ["locations", "Attendance locations", "building"],
       ["assets", "Asset Management", "briefcase"],
     ],
   },
@@ -375,6 +381,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "payroll" && <Payroll setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "schedules" && <Schedules setNotice={setNotice} />}
         {module === "devices" && <Devices setNotice={setNotice} />}
+        {module === "locations" && <AttendanceLocations setNotice={setNotice} />}
         {module === "assets" && <Assets setNotice={setNotice} />}
         {module === "settings" && <Settings setNotice={setNotice} />}
         {module === "integrations" && (
@@ -605,6 +612,8 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [role, setRole] = useState("employee");
   const [teamId, setTeamId] = useState("");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [attendanceLocationId, setAttendanceLocationId] = useState("");
+  const [attendanceLocations, setAttendanceLocations] = useState<AdminAttendanceLocation[]>([]);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -618,6 +627,9 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
     listTeams()
       .then(setTeams)
       .catch(() => setTeams([]));
+    listAttendanceLocations()
+      .then(setAttendanceLocations)
+      .catch(() => setAttendanceLocations([]));
   }, []);
 
   const teamRequired = role !== "kiosk";
@@ -636,6 +648,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
         email,
         role,
         teamId: teamId || null,
+        attendanceLocationId: attendanceLocationId || null,
         startDate,
         ppsNumber,
         dateOfBirth,
@@ -689,6 +702,16 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </label>
           )}
           <label>
+            Attendance location (optional)
+            <select value={attendanceLocationId} onChange={(e) => setAttendanceLocationId(e.target.value)} disabled={saving}>
+              <option value="">Unassigned</option>
+              {attendanceLocations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </label>
+          <p className="muted small">Needed for direct PWA clock-in as "office" — required to confirm the employee is nearby.</p>
+          <label>
             Start date
             <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={saving} />
           </label>
@@ -739,6 +762,8 @@ function EditEmployeeModal({
   const [role, setRole] = useState(employee.role);
   const [teamId, setTeamId] = useState(employee.teamId ?? "");
   const [teams, setTeams] = useState<AdminTeam[]>([]);
+  const [attendanceLocationId, setAttendanceLocationId] = useState(employee.attendanceLocationId ?? "");
+  const [attendanceLocations, setAttendanceLocations] = useState<AdminAttendanceLocation[]>([]);
   const [startDate, setStartDate] = useState(employee.startDate ?? "");
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -752,6 +777,9 @@ function EditEmployeeModal({
     listTeams()
       .then(setTeams)
       .catch(() => setTeams([]));
+    listAttendanceLocations()
+      .then(setAttendanceLocations)
+      .catch(() => setAttendanceLocations([]));
     getEmployeeDetails(employee.id)
       .then((details) => {
         setPpsNumber(details.ppsNumber ?? "");
@@ -769,7 +797,15 @@ function EditEmployeeModal({
     setError(null);
     setSaving(true);
     try {
-      const updated = await updateEmployee({ id: employee.id, fullName, employeeCode, role, teamId: teamId || null, startDate: startDate || undefined });
+      const updated = await updateEmployee({
+        id: employee.id,
+        fullName,
+        employeeCode,
+        role,
+        teamId: teamId || null,
+        attendanceLocationId: attendanceLocationId || null,
+        startDate: startDate || undefined,
+      });
       await upsertEmployeeDetails(employee.id, { ppsNumber, dateOfBirth, phoneNumber, address, placeOfBirth });
       onSaved(updated);
     } catch (err) {
@@ -810,6 +846,15 @@ function EditEmployeeModal({
               <option value="">No team</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Attendance location
+            <select value={attendanceLocationId} onChange={(e) => setAttendanceLocationId(e.target.value)} disabled={saving}>
+              <option value="">Unassigned</option>
+              {attendanceLocations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
           </label>
@@ -1134,7 +1179,11 @@ function Attendance({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean
               <span>{row.employeeName}</span>
               <span>{row.clockedInAt ? formatTime(row.clockedInAt) : "--:--"}</span>
               <span>{row.clockedOutAt ? formatTime(row.clockedOutAt) : "--:--"}</span>
-              <span className={`pill ${row.state === "complete" ? "success" : row.state === "not_started" ? "" : "pending"}`}>{stateLabel(row.state)}</span>
+              <span className="row-actions">
+                <span className={`pill ${row.state === "complete" ? "success" : row.state === "not_started" ? "" : "pending"}`}>{stateLabel(row.state)}</span>
+                {row.locationStatus === "out_of_range" && <span className="pill danger">Off-site</span>}
+                {row.locationStatus === "unavailable" && <span className="pill pending">Unverified</span>}
+              </span>
             </div>
           ))}
         </section>
@@ -3243,6 +3292,162 @@ function EditCompensationModal({
           <div className="admin-modal-actions">
             <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
             <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceLocations({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminAttendanceLocation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<AdminAttendanceLocation | null>(null);
+
+  function load() {
+    listAttendanceLocations()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load attendance locations.")));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <>
+      <Toolbar action="Add location" onAction={() => setShowCreate(true)} />
+      {showCreate && (
+        <AttendanceLocationModal
+          onClose={() => setShowCreate(false)}
+          onSaved={(name) => {
+            setShowCreate(false);
+            setNotice(`Location "${name}" added.`);
+            load();
+          }}
+        />
+      )}
+      {editing && (
+        <AttendanceLocationModal
+          location={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(name) => {
+            setEditing(null);
+            setNotice(`Location "${name}" updated.`);
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel
+          icon="building"
+          title="No attendance locations yet"
+          note="Add a location so employees can clock in as “office” from the PWA — direct clock-in checks that they're within its radius."
+        />
+      ) : (
+        <section className="panel">
+          <div className="table-head"><b>Location</b><b>Coordinates</b><b>Radius</b><b>Actions</b></div>
+          {rows.map((location) => (
+            <div className="table-row" key={location.id}>
+              <span>{location.name}</span>
+              <span>{location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</span>
+              <span>{location.radiusMeters}m</span>
+              <span className="row-actions">
+                <button className="icon-action" onClick={() => setEditing(location)} aria-label={`Edit ${location.name}`} title="Edit">
+                  <Icon name="edit" size={15} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function AttendanceLocationModal({
+  location,
+  onClose,
+  onSaved,
+}: {
+  location?: AdminAttendanceLocation;
+  onClose: () => void;
+  onSaved: (name: string) => void;
+}) {
+  const [name, setName] = useState(location?.name ?? "");
+  const [latitude, setLatitude] = useState(location ? String(location.latitude) : "");
+  const [longitude, setLongitude] = useState(location ? String(location.longitude) : "");
+  const [radiusMeters, setRadiusMeters] = useState(location ? String(location.radiusMeters) : "150");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    const radius = Number(radiusMeters);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      setError("Enter a valid latitude between -90 and 90.");
+      return;
+    }
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+      setError("Enter a valid longitude between -180 and 180.");
+      return;
+    }
+    if (!Number.isFinite(radius) || radius <= 0) {
+      setError("Enter a radius greater than 0.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      if (location) {
+        await updateAttendanceLocation({ id: location.id, name, latitude: lat, longitude: lng, radiusMeters: radius });
+      } else {
+        await createAttendanceLocation({ name, latitude: lat, longitude: lng, radiusMeters: radius });
+      }
+      onSaved(name);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save the location."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>{location ? "Edit location" : "Add location"}</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Name
+            <input required value={name} onChange={(e) => setName(e.target.value)} disabled={saving} placeholder="e.g. Pristina HQ" />
+          </label>
+          <label>
+            Latitude
+            <input required type="number" step="any" value={latitude} onChange={(e) => setLatitude(e.target.value)} disabled={saving} placeholder="42.662914" />
+          </label>
+          <label>
+            Longitude
+            <input required type="number" step="any" value={longitude} onChange={(e) => setLongitude(e.target.value)} disabled={saving} placeholder="21.165503" />
+          </label>
+          <label>
+            Radius (meters)
+            <input required type="number" min="1" step="1" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} disabled={saving} />
+          </label>
+          <p className="muted small">An employee clocking in as "office" from this location must be within this radius. Wider radius = more tolerant of GPS drift.</p>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : location ? "Save changes" : "Add location"}</button>
           </div>
         </form>
       </div>

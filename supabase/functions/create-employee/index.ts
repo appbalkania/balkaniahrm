@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
     employeeCode?: string;
     role?: string;
     teamId?: string | null;
+    attendanceLocationId?: string | null;
     redirectTo?: string;
     startDate?: string;
     ppsNumber?: string;
@@ -81,6 +82,7 @@ Deno.serve(async (req) => {
   const employeeCode = body.employeeCode?.trim() || null;
   const role = body.role?.trim() ?? "employee";
   const teamId = body.teamId?.trim() || null;
+  const attendanceLocationId = body.attendanceLocationId?.trim() || null;
   const startDate = body.startDate?.trim() || null;
 
   if (!fullName) return json({ error: "Full name is required." }, 400);
@@ -91,6 +93,13 @@ Deno.serve(async (req) => {
     const { data: team } = await adminClient.from("teams").select("id").eq("id", teamId).maybeSingle();
     if (!team) {
       return json({ error: "Selected team is invalid." }, 400);
+    }
+  }
+
+  if (attendanceLocationId) {
+    const { data: location } = await adminClient.from("attendance_locations").select("id").eq("id", attendanceLocationId).maybeSingle();
+    if (!location) {
+      return json({ error: "Selected attendance location is invalid." }, 400);
     }
   }
 
@@ -109,9 +118,10 @@ Deno.serve(async (req) => {
       employee_code: employeeCode,
       role,
       team_id: teamId,
+      attendance_location_id: attendanceLocationId,
       ...(startDate ? { start_date: startDate } : {}),
     })
-    .select("id,full_name,employee_code,role,team_id,start_date")
+    .select("id,full_name,employee_code,role,team_id,attendance_location_id,start_date")
     .single();
 
   if (profileError) {
@@ -143,6 +153,7 @@ Deno.serve(async (req) => {
     employeeCode: profile.employee_code,
     role: profile.role,
     teamId: profile.team_id,
+    attendanceLocationId: profile.attendance_location_id,
     startDate: profile.start_date,
   });
 });

@@ -21,29 +21,47 @@ export interface AdminEmployee {
   role: string;
   teamId: string | null;
   teamName: string | null;
+  attendanceLocationId: string | null;
+  attendanceLocationName: string | null;
   active: boolean;
   startDate: string | null;
 }
 
+const EMPLOYEE_COLUMNS =
+  "id,full_name,employee_code,role,team_id,attendance_location_id,active,start_date,teams!profiles_team_id_fkey(name),attendance_locations!profiles_attendance_location_id_fkey(name)";
+
+function mapEmployee(row: {
+  id: string;
+  full_name: string;
+  employee_code: string;
+  role: string;
+  team_id: string | null;
+  attendance_location_id: string | null;
+  active: boolean;
+  start_date: string | null;
+  teams: { name: string } | { name: string }[] | null;
+  attendance_locations: { name: string } | { name: string }[] | null;
+}): AdminEmployee {
+  const team = Array.isArray(row.teams) ? row.teams[0] : row.teams;
+  const location = Array.isArray(row.attendance_locations) ? row.attendance_locations[0] : row.attendance_locations;
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    employeeCode: row.employee_code,
+    role: row.role,
+    teamId: row.team_id,
+    teamName: team?.name ?? null,
+    attendanceLocationId: row.attendance_location_id,
+    attendanceLocationName: location?.name ?? null,
+    active: row.active,
+    startDate: row.start_date,
+  };
+}
+
 export async function listEmployees(): Promise<AdminEmployee[]> {
-  const { data, error } = await client()
-    .from("profiles")
-    .select("id,full_name,employee_code,role,team_id,active,start_date,teams!profiles_team_id_fkey(name)")
-    .order("full_name");
+  const { data, error } = await client().from("profiles").select(EMPLOYEE_COLUMNS).order("full_name");
   if (error) throw error;
-  return (data ?? []).map((row) => {
-    const team = Array.isArray(row.teams) ? row.teams[0] : row.teams;
-    return {
-      id: row.id,
-      fullName: row.full_name,
-      employeeCode: row.employee_code,
-      role: row.role,
-      teamId: row.team_id,
-      teamName: team?.name ?? null,
-      active: row.active,
-      startDate: row.start_date,
-    };
-  });
+  return (data ?? []).map(mapEmployee);
 }
 
 export async function setEmployeeActive(employeeId: string, active: boolean): Promise<void> {
@@ -57,6 +75,7 @@ export interface CreateEmployeeInput {
   email: string;
   role: string;
   teamId?: string | null;
+  attendanceLocationId?: string | null;
   startDate?: string;
   ppsNumber?: string;
   dateOfBirth?: string;
@@ -72,6 +91,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
       email: input.email,
       role: input.role,
       teamId: input.teamId || null,
+      attendanceLocationId: input.attendanceLocationId || null,
       redirectTo: `${window.location.origin}/welcome`,
       startDate: input.startDate || undefined,
       ppsNumber: input.ppsNumber || undefined,
@@ -90,6 +110,8 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<AdminE
     role: data.role,
     teamId: data.teamId ?? null,
     teamName: null,
+    attendanceLocationId: data.attendanceLocationId ?? null,
+    attendanceLocationName: null,
     active: true,
     startDate: data.startDate ?? null,
   };
@@ -142,6 +164,7 @@ export interface UpdateEmployeeInput {
   employeeCode: string;
   role: string;
   teamId?: string | null;
+  attendanceLocationId?: string | null;
   startDate?: string;
 }
 
@@ -153,23 +176,14 @@ export async function updateEmployee(input: UpdateEmployeeInput): Promise<AdminE
       employee_code: input.employeeCode,
       role: input.role,
       team_id: input.teamId || null,
+      attendance_location_id: input.attendanceLocationId || null,
       ...(input.startDate ? { start_date: input.startDate } : {}),
     })
     .eq("id", input.id)
-    .select("id,full_name,employee_code,role,team_id,active,start_date,teams!profiles_team_id_fkey(name)")
+    .select(EMPLOYEE_COLUMNS)
     .single();
   if (error) throw error;
-  const team = Array.isArray(data.teams) ? data.teams[0] : data.teams;
-  return {
-    id: data.id,
-    fullName: data.full_name,
-    employeeCode: data.employee_code,
-    role: data.role,
-    teamId: data.team_id,
-    teamName: team?.name ?? null,
-    active: data.active,
-    startDate: data.start_date,
-  };
+  return mapEmployee(data);
 }
 
 export async function deleteEmployee(employeeId: string): Promise<void> {
@@ -249,6 +263,62 @@ export async function updateTeam(input: UpdateTeamInput): Promise<AdminTeam> {
     .single();
   if (error) throw error;
   return { id: data.id, name: data.name, managerId: data.manager_id, managerName: null };
+}
+
+export interface AdminAttendanceLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+}
+
+const ATTENDANCE_LOCATION_COLUMNS = "id,name,latitude,longitude,radius_meters";
+
+function mapAttendanceLocation(row: { id: string; name: string; latitude: number; longitude: number; radius_meters: number }): AdminAttendanceLocation {
+  return { id: row.id, name: row.name, latitude: row.latitude, longitude: row.longitude, radiusMeters: row.radius_meters };
+}
+
+export async function listAttendanceLocations(): Promise<AdminAttendanceLocation[]> {
+  const { data, error } = await client().from("attendance_locations").select(ATTENDANCE_LOCATION_COLUMNS).order("name");
+  if (error) throw error;
+  return (data ?? []).map(mapAttendanceLocation);
+}
+
+export interface CreateAttendanceLocationInput {
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+}
+
+export async function createAttendanceLocation(input: CreateAttendanceLocationInput): Promise<AdminAttendanceLocation> {
+  const { data, error } = await client()
+    .from("attendance_locations")
+    .insert({ name: input.name, latitude: input.latitude, longitude: input.longitude, radius_meters: input.radiusMeters })
+    .select(ATTENDANCE_LOCATION_COLUMNS)
+    .single();
+  if (error) throw error;
+  return mapAttendanceLocation(data);
+}
+
+export interface UpdateAttendanceLocationInput {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+}
+
+export async function updateAttendanceLocation(input: UpdateAttendanceLocationInput): Promise<AdminAttendanceLocation> {
+  const { data, error } = await client()
+    .from("attendance_locations")
+    .update({ name: input.name, latitude: input.latitude, longitude: input.longitude, radius_meters: input.radiusMeters })
+    .eq("id", input.id)
+    .select(ATTENDANCE_LOCATION_COLUMNS)
+    .single();
+  if (error) throw error;
+  return mapAttendanceLocation(data);
 }
 
 export interface AdminLeaveRequest {
@@ -376,12 +446,15 @@ export interface AdminAttendanceSession {
   clockedOutAt: string | null;
   employeeName: string;
   employeeCode: string;
+  locationStatus: string | null;
 }
 
 export async function listAttendanceSessions(workDate: string): Promise<AdminAttendanceSession[]> {
   const { data, error } = await client()
     .from("attendance_sessions")
-    .select("id,state,clocked_in_at,clocked_out_at,profiles!attendance_sessions_employee_id_fkey(full_name,employee_code)")
+    .select(
+      "id,state,clocked_in_at,clocked_out_at,clock_in_location_status,profiles!attendance_sessions_employee_id_fkey(full_name,employee_code)",
+    )
     .eq("work_date", workDate)
     .order("clocked_in_at");
   if (error) throw error;
@@ -394,6 +467,7 @@ export async function listAttendanceSessions(workDate: string): Promise<AdminAtt
       clockedOutAt: row.clocked_out_at,
       employeeName: profile?.full_name ?? "Unknown",
       employeeCode: profile?.employee_code ?? "",
+      locationStatus: row.clock_in_location_status,
     };
   });
 }
