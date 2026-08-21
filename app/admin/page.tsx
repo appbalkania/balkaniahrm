@@ -71,6 +71,26 @@ import {
   type DisciplinarySeverity,
   type RegisteredDevice,
 } from "../../lib/admin-service";
+import {
+  addPayslipLineItem,
+  createPayrollPeriod,
+  deletePayslipLineItem,
+  finalizePayrollPeriod,
+  generatePayslips,
+  listEmployeeCompensation,
+  listPayrollPeriods,
+  listPayslipLineItems,
+  listPayslips,
+  markPayrollPeriodPaid,
+  upsertEmployeeCompensation,
+  type AdminCompensation,
+  type AdminPayrollPeriod,
+  type AdminPayslip,
+  type AdminPayslipLineItem,
+  type PayrollPeriodStatus,
+  type PayType,
+  type PayslipLineType,
+} from "../../lib/payroll-service";
 
 type Module =
   | "dashboard"
@@ -346,9 +366,7 @@ function AdminShell({ profile }: { profile: Profile }) {
         {module === "performance" && (
           <EmptyPanel icon="chart" title="Performance Review" note="Goals, reviews, and feedback cycles are coming in a later release." />
         )}
-        {module === "payroll" && (
-          <EmptyPanel icon="creditCard" title="Payroll" note="Payroll runs and payslips are coming in a later release." />
-        )}
+        {module === "payroll" && <Payroll setNotice={setNotice} isHrAdmin={profile.role === "hr_admin"} />}
         {module === "schedules" && <Schedules setNotice={setNotice} />}
         {module === "devices" && <Devices setNotice={setNotice} />}
         {module === "assets" && <Assets setNotice={setNotice} />}
@@ -2519,6 +2537,666 @@ function AssetHistoryModal({ asset, onClose }: { asset: AdminAsset; onClose: () 
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+const payrollStatusPill: Record<PayrollPeriodStatus, string> = {
+  draft: "pending",
+  finalized: "",
+  paid: "success",
+};
+
+function Payroll({ setNotice, isHrAdmin }: NoticeProps & { isHrAdmin: boolean }) {
+  const [view, setView] = useState<"periods" | "rates">("periods");
+
+  if (!isHrAdmin) {
+    return <EmptyPanel icon="creditCard" title="Payroll" note="Payroll is managed by HR administrators." />;
+  }
+
+  return (
+    <>
+      <div className="module-tabs">
+        <button className={view === "periods" ? "active" : ""} onClick={() => setView("periods")}>Periods</button>
+        <button className={view === "rates" ? "active" : ""} onClick={() => setView("rates")}>Pay rates</button>
+      </div>
+      {view === "periods" ? <PayrollPeriods setNotice={setNotice} /> : <PayRates setNotice={setNotice} />}
+    </>
+  );
+}
+
+function PayrollPeriods({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminPayrollPeriod[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [selected, setSelected] = useState<AdminPayrollPeriod | null>(null);
+
+  function load() {
+    listPayrollPeriods()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load payroll periods.")));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (selected) {
+    return (
+      <PayrollPeriodDetail
+        period={selected}
+        onBack={() => {
+          setSelected(null);
+          load();
+        }}
+        onChanged={setSelected}
+        setNotice={setNotice}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Toolbar action="New period" onAction={() => setShowCreate(true)} />
+      {showCreate && (
+        <CreatePayrollPeriodModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            setNotice("Payroll period created.");
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="creditCard" title="No payroll periods yet" note="Create a period to start generating payslips." />
+      ) : (
+        <section className="panel">
+          <div className="table-head cols-5"><b>Period</b><b>Dates</b><b>Status</b><b>Payslips</b><b>Actions</b></div>
+          {rows.map((period) => (
+            <div className="table-row cols-5" key={period.id}>
+              <span>{period.label}</span>
+              <span>{formatDate(period.startsOn)} – {formatDate(period.endsOn)}</span>
+              <span className={`pill ${payrollStatusPill[period.status]}`}>{period.status}</span>
+              <span>{period.payslipCount}</span>
+              <span className="row-actions">
+                <button className="icon-action" onClick={() => setSelected(period)} aria-label={`Open ${period.label}`} title="Open">
+                  <Icon name="chevronRight" size={15} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function CreatePayrollPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [label, setLabel] = useState("");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await createPayrollPeriod({ label, startsOn, endsOn });
+      onCreated();
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't create the payroll period."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>New payroll period</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Label
+            <input required value={label} onChange={(e) => setLabel(e.target.value)} disabled={saving} placeholder="e.g. August 2026" />
+          </label>
+          <label>
+            Starts on
+            <input required type="date" value={startsOn} max={endsOn || undefined} onChange={(e) => setStartsOn(e.target.value)} disabled={saving} />
+          </label>
+          <label>
+            Ends on
+            <input required type="date" value={endsOn} min={startsOn || undefined} onChange={(e) => setEndsOn(e.target.value)} disabled={saving} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Creating…" : "Create period"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function PayrollPeriodDetail({
+  period,
+  onBack,
+  onChanged,
+  setNotice,
+}: {
+  period: AdminPayrollPeriod;
+  onBack: () => void;
+  onChanged: (period: AdminPayrollPeriod) => void;
+  setNotice: (value: string) => void;
+}) {
+  const [rows, setRows] = useState<AdminPayslip[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedPayslip, setSelectedPayslip] = useState<AdminPayslip | null>(null);
+
+  function load() {
+    listPayslips(period.id)
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load payslips.")));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period.id]);
+
+  async function refreshPeriod() {
+    const periods = await listPayrollPeriods();
+    const updated = periods.find((p) => p.id === period.id);
+    if (updated) onChanged(updated);
+  }
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      await generatePayslips(period.id);
+      setNotice("Payslips generated.");
+      await load();
+      await refreshPeriod();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't generate payslips."));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleFinalize() {
+    if (!window.confirm(`Finalize ${period.label}? Payslip line items can't be edited afterwards.`)) return;
+    setTransitioning(true);
+    try {
+      await finalizePayrollPeriod(period.id);
+      setNotice(`${period.label} finalized.`);
+      await load();
+      await refreshPeriod();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't finalize the period."));
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  async function handleMarkPaid() {
+    if (!window.confirm(`Mark ${period.label} as paid?`)) return;
+    setTransitioning(true);
+    try {
+      await markPayrollPeriodPaid(period.id);
+      setNotice(`${period.label} marked paid.`);
+      await load();
+      await refreshPeriod();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't update the period."));
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  function handleExport() {
+    if (!rows || rows.length === 0) {
+      setNotice("No payslips to export for this period.");
+      return;
+    }
+    setExporting(true);
+    try {
+      downloadCsv(
+        `payroll-${period.label.replace(/\s+/g, "-").toLowerCase()}.csv`,
+        ["Employee", "Employee code", "Pay type", "Hours", "Gross pay", "Deductions", "Net pay", "Status"],
+        rows.map((row) => [
+          row.employeeName,
+          row.employeeCode,
+          row.payType,
+          row.hoursWorked ?? "",
+          row.grossPay,
+          row.totalDeductions,
+          row.netPay,
+          row.status,
+        ]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totals = (rows ?? []).reduce(
+    (acc, row) => ({ gross: acc.gross + row.grossPay, net: acc.net + row.netPay }),
+    { gross: 0, net: 0 },
+  );
+
+  return (
+    <>
+      <button className="outline-button back-button" onClick={onBack}>
+        <Icon name="arrowLeft" size={15} /> All periods
+      </button>
+      {selectedPayslip && (
+        <PayslipDetailModal
+          payslip={selectedPayslip}
+          editable={period.status === "draft"}
+          onClose={() => setSelectedPayslip(null)}
+          onChanged={load}
+          setNotice={setNotice}
+        />
+      )}
+      <div className="panel-title">
+        <h2>{period.label}</h2>
+        <span className={`pill ${payrollStatusPill[period.status]}`}>{period.status}</span>
+      </div>
+      <p className="muted small">{formatDate(period.startsOn)} – {formatDate(period.endsOn)}</p>
+
+      <div className="admin-stats">
+        <Stat label="Payslips" value={String(rows?.length ?? 0)} note="Generated" />
+        <Stat label="Total gross" value={totals.gross.toFixed(2)} note="This period" />
+        <Stat label="Total net" value={totals.net.toFixed(2)} note="This period" />
+      </div>
+
+      <div className="toolbar">
+        {period.status === "draft" && (
+          <button className="outline-button" onClick={handleGenerate} disabled={generating}>
+            <Icon name="plus" size={15} /> {generating ? "Generating…" : "Generate payslips"}
+          </button>
+        )}
+        <button className="outline-button" onClick={handleExport} disabled={exporting || !rows?.length}>
+          <Icon name="download" size={15} /> {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+        {period.status === "draft" && (
+          <button className="primary-admin" onClick={handleFinalize} disabled={transitioning || !rows?.length}>
+            <Icon name="lock" size={15} /> Finalize period
+          </button>
+        )}
+        {period.status === "finalized" && (
+          <button className="primary-admin" onClick={handleMarkPaid} disabled={transitioning}>
+            <Icon name="check" size={15} /> Mark paid
+          </button>
+        )}
+      </div>
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="creditCard" title="No payslips yet" note="Generate payslips to draft pay for every active employee." />
+      ) : (
+        <section className="panel">
+          <div className="table-head cols-8">
+            <b>Employee</b><b>Pay type</b><b>Hours</b><b>Gross</b><b>Deductions</b><b>Net</b><b>Status</b><b>Actions</b>
+          </div>
+          {rows.map((row) => (
+            <div className="table-row cols-8" key={row.id}>
+              <span>{row.employeeName}</span>
+              <span>{row.payType === "hourly" ? "Hourly" : "Salary"}</span>
+              <span>{row.hoursWorked != null ? row.hoursWorked.toFixed(1) : "—"}</span>
+              <span>{row.grossPay.toFixed(2)}</span>
+              <span>{row.totalDeductions.toFixed(2)}</span>
+              <span>{row.netPay.toFixed(2)}</span>
+              <span className={`pill ${payrollStatusPill[row.status]}`}>{row.status}</span>
+              <span className="row-actions">
+                <button className="icon-action" onClick={() => setSelectedPayslip(row)} aria-label={`View payslip for ${row.employeeName}`} title="View payslip">
+                  <Icon name="chevronRight" size={15} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function PayslipDetailModal({
+  payslip,
+  editable,
+  onClose,
+  onChanged,
+  setNotice,
+}: {
+  payslip: AdminPayslip;
+  editable: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+  setNotice: (value: string) => void;
+}) {
+  const [items, setItems] = useState<AdminPayslipLineItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function load() {
+    listPayslipLineItems(payslip.id)
+      .then(setItems)
+      .catch((err) => setError(errorMessage(err, "Couldn't load line items.")));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payslip.id]);
+
+  async function handleDelete(item: AdminPayslipLineItem) {
+    setBusyId(item.id);
+    try {
+      await deletePayslipLineItem(item.id);
+      load();
+      onChanged();
+    } catch (err) {
+      setNotice(errorMessage(err, "Couldn't remove the line item."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const totals = (items ?? []).reduce(
+    (acc, item) => {
+      if (item.lineType === "earning") acc.gross += item.amount;
+      else acc.deductions += item.amount;
+      return acc;
+    },
+    { gross: 0, deductions: 0 },
+  );
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>{payslip.employeeName}</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <p className="muted small">
+          {payslip.employeeCode} · {payslip.payType === "hourly" ? `${payslip.hoursWorked?.toFixed(1) ?? 0}h worked` : "Salaried"}
+        </p>
+
+        {showAdd && (
+          <AddPayslipLineItemForm
+            payslipId={payslip.id}
+            onCancel={() => setShowAdd(false)}
+            onAdded={() => {
+              setShowAdd(false);
+              load();
+              onChanged();
+            }}
+          />
+        )}
+
+        {error ? (
+          <ErrorState message={error} />
+        ) : !items ? (
+          <LoadingPanel />
+        ) : (
+          <div>
+            <div className="table-head"><b>Type</b><b>Label</b><b>Amount</b>{editable && <b></b>}</div>
+            {items.map((item) => (
+              <div className="table-row" key={item.id}>
+                <span className={`pill ${item.lineType === "deduction" ? "danger" : "success"}`}>{item.lineType}</span>
+                <span>{item.label}</span>
+                <span>{item.amount.toFixed(2)}</span>
+                {editable && (
+                  <span className="row-actions">
+                    <button className="icon-action reject" disabled={busyId === item.id} onClick={() => handleDelete(item)} aria-label={`Remove ${item.label}`} title="Remove">
+                      <Icon name="trash" size={15} />
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="payslip-totals">
+          <span>Gross <b>{totals.gross.toFixed(2)}</b></span>
+          <span>Deductions <b>{totals.deductions.toFixed(2)}</b></span>
+          <span>Net <b>{(totals.gross - totals.deductions).toFixed(2)}</b></span>
+        </div>
+
+        <div className="admin-modal-actions">
+          {editable && !showAdd && (
+            <button type="button" className="outline-button" onClick={() => setShowAdd(true)}>
+              <Icon name="plus" size={15} /> Add line
+            </button>
+          )}
+          <button className="primary-admin" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddPayslipLineItemForm({
+  payslipId,
+  onCancel,
+  onAdded,
+}: {
+  payslipId: string;
+  onCancel: () => void;
+  onAdded: () => void;
+}) {
+  const [lineType, setLineType] = useState<PayslipLineType>("deduction");
+  const [label, setLabel] = useState("");
+  const [amount, setAmount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const parsed = Number(amount);
+    if (!label.trim() || !Number.isFinite(parsed) || parsed < 0) {
+      setError("Enter a label and an amount of 0 or more.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await addPayslipLineItem({ payslipId, lineType, label, amount: parsed });
+      onAdded();
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't add the line item."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="admin-login-form payslip-line-form" onSubmit={handleSubmit}>
+      <label>
+        Type
+        <select value={lineType} onChange={(e) => setLineType(e.target.value as PayslipLineType)} disabled={saving}>
+          <option value="earning">Earning</option>
+          <option value="deduction">Deduction</option>
+        </select>
+      </label>
+      <label>
+        Label
+        <input required value={label} onChange={(e) => setLabel(e.target.value)} disabled={saving} placeholder="e.g. Income tax" />
+      </label>
+      <label>
+        Amount
+        <input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={saving} />
+      </label>
+      {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+      <div className="admin-modal-actions">
+        <button type="button" className="outline-button" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Adding…" : "Add line"}</button>
+      </div>
+    </form>
+  );
+}
+
+function PayRates({ setNotice }: NoticeProps) {
+  const [rows, setRows] = useState<AdminCompensation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AdminCompensation | null>(null);
+
+  function load() {
+    listEmployeeCompensation()
+      .then(setRows)
+      .catch((err) => setError(errorMessage(err, "Couldn't load pay rates.")));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <>
+      {editing && (
+        <EditCompensationModal
+          compensation={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setNotice(`Pay rate updated for ${editing.employeeName}.`);
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
+      {error ? (
+        <ErrorState message={error} />
+      ) : !rows ? (
+        <LoadingPanel />
+      ) : rows.length === 0 ? (
+        <EmptyPanel icon="creditCard" title="No active employees" note="Pay rates appear here once employees are added." />
+      ) : (
+        <section className="panel">
+          <div className="table-head cols-6">
+            <b>Employee</b><b>Employee code</b><b>Pay type</b><b>Rate</b><b>Currency</b><b>Actions</b>
+          </div>
+          {rows.map((row) => (
+            <div className="table-row cols-6" key={row.employeeId}>
+              <span>{row.employeeName}</span>
+              <span>{row.employeeCode}</span>
+              <span>{row.payType === "hourly" ? "Hourly" : "Salary"}</span>
+              <span>{row.payType === "hourly" ? row.hourlyRate?.toFixed(2) ?? "—" : row.monthlySalary?.toFixed(2) ?? "—"}</span>
+              <span>{row.currency}</span>
+              <span className="row-actions">
+                <button className="icon-action" onClick={() => setEditing(row)} aria-label={`Edit pay rate for ${row.employeeName}`} title="Edit">
+                  <Icon name="edit" size={15} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+function EditCompensationModal({
+  compensation,
+  onClose,
+  onSaved,
+}: {
+  compensation: AdminCompensation;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [payType, setPayType] = useState<PayType>(compensation.payType);
+  const [monthlySalary, setMonthlySalary] = useState(compensation.monthlySalary != null ? String(compensation.monthlySalary) : "");
+  const [hourlyRate, setHourlyRate] = useState(compensation.hourlyRate != null ? String(compensation.hourlyRate) : "");
+  const [currency, setCurrency] = useState(compensation.currency);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const salary = Number(monthlySalary);
+    const rate = Number(hourlyRate);
+    if (payType === "salary" && (!monthlySalary || !Number.isFinite(salary) || salary < 0)) {
+      setError("Enter a monthly salary of 0 or more.");
+      return;
+    }
+    if (payType === "hourly" && (!hourlyRate || !Number.isFinite(rate) || rate < 0)) {
+      setError("Enter an hourly rate of 0 or more.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await upsertEmployeeCompensation({
+        employeeId: compensation.employeeId,
+        payType,
+        monthlySalary: payType === "salary" ? salary : null,
+        hourlyRate: payType === "hourly" ? rate : null,
+        currency,
+      });
+      onSaved();
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't update the pay rate."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="admin-modal-overlay" onClick={onClose}>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-modal-header">
+          <h2>{compensation.employeeName}</h2>
+          <button className="icon-action" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+        <form className="admin-login-form" onSubmit={handleSubmit}>
+          <label>
+            Pay type
+            <select value={payType} onChange={(e) => setPayType(e.target.value as PayType)} disabled={saving}>
+              <option value="salary">Monthly salary</option>
+              <option value="hourly">Hourly rate</option>
+            </select>
+          </label>
+          {payType === "salary" ? (
+            <label>
+              Monthly salary
+              <input required type="number" min="0" step="0.01" value={monthlySalary} onChange={(e) => setMonthlySalary(e.target.value)} disabled={saving} />
+            </label>
+          ) : (
+            <label>
+              Hourly rate
+              <input required type="number" min="0" step="0.01" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} disabled={saving} />
+            </label>
+          )}
+          <label>
+            Currency
+            <input required value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} disabled={saving} maxLength={3} />
+          </label>
+          {error && <p className="form-error"><Icon name="warning" size={14} />{error}</p>}
+          <div className="admin-modal-actions">
+            <button type="button" className="outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="primary-admin" type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
       </div>
     </div>
   );

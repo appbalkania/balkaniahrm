@@ -98,6 +98,8 @@
 
 .table-head, .table-row { display: grid; grid-template-columns: 2fr 1.2fr 1.5fr 1fr; gap: 10px; align-items: center; padding: 14px 4px; border-bottom: 1px solid #eef0f6; font-size: 13.5px; }
 .table-head.cols-5, .table-row.cols-5 { grid-template-columns: 1.8fr 1fr 1.1fr 1fr 0.9fr; }
+.table-head.cols-6, .table-row.cols-6 { grid-template-columns: 1.6fr 1fr 1fr 1fr 0.8fr 0.8fr; }
+.table-head.cols-8, .table-row.cols-8 { grid-template-columns: 1.4fr 0.9fr 0.7fr 0.8fr 0.9fr 0.8fr 0.9fr 0.7fr; }
 .table-head { color: #6b7280; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .table-row:last-child { border-bottom: 0; }
 .person-dot { display: grid; place-items: center; width: 27px; height: 27px; margin-right: 10px; border-radius: 9px; background: #e7e9f6; color: var(--navy); font-style: normal; font-weight: 600; font-size: 12px; }
@@ -163,6 +165,9 @@
 .admin-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .admin-modal-header h2 { margin: 0; font-size: 18px; }
 .admin-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.back-button { margin-bottom: 18px; display: inline-flex; align-items: center; gap: 6px; }
+.payslip-totals { display: flex; gap: 18px; margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f6f7fb; font-size: 13.5px; }
+.payslip-totals b { margin-left: 5px; }
 .admin-login-form select { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; font-size: 14px; background: #fff; }
 .admin-login-form textarea { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; font-size: 14px; resize: vertical; }
 
@@ -178,4 +183,8 @@
   .table-head.cols-5 b:nth-child(2), .table-row.cols-5 span:nth-child(2),
   .table-head.cols-5 b:nth-child(3), .table-row.cols-5 span:nth-child(3),
   .table-head.cols-5 b:nth-child(4), .table-row.cols-5 span:nth-child(4) { display: none; }
+  .table-head.cols-6, .table-row.cols-6,
+  .table-head.cols-8, .table-row.cols-8 { grid-template-columns: 1.6fr 1fr; }
+  .table-head.cols-6 b:nth-child(n+2):nth-child(-n+5), .table-row.cols-6 span:nth-child(n+2):nth-child(-n+5),
+  .table-head.cols-8 b:nth-child(n+2):nth-child(-n+7), .table-row.cols-8 span:nth-child(n+2):nth-child(-n+7) { display: none; }
 }
