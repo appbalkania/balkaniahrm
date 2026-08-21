@@ -44,6 +44,7 @@ export interface Profile {
   employeeCode: string;
   role: EmployeeRole;
   active: boolean;
+  selfServiceAttendance: boolean;
 }
 
 export interface LeaveBalance {

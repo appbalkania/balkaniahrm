@@ -614,6 +614,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [attendanceLocationId, setAttendanceLocationId] = useState("");
   const [attendanceLocations, setAttendanceLocations] = useState<AdminAttendanceLocation[]>([]);
+  const [selfServiceAttendance, setSelfServiceAttendance] = useState(false);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -649,6 +650,7 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
         role,
         teamId: teamId || null,
         attendanceLocationId: attendanceLocationId || null,
+        selfServiceAttendance,
         startDate,
         ppsNumber,
         dateOfBirth,
@@ -711,6 +713,11 @@ function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </select>
           </label>
           <p className="muted small">Needed for direct PWA clock-in as "office" — required to confirm the employee is nearby.</p>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={selfServiceAttendance} onChange={(e) => setSelfServiceAttendance(e.target.checked)} disabled={saving} />
+            Allow self-service clock-in (skip the kiosk)
+          </label>
+          <p className="muted small">Off by default — everyone else must clock in at the shared kiosk. Turn this on for remote or trusted staff who should clock in from the app instead.</p>
           <label>
             Start date
             <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={saving} />
@@ -764,6 +771,7 @@ function EditEmployeeModal({
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [attendanceLocationId, setAttendanceLocationId] = useState(employee.attendanceLocationId ?? "");
   const [attendanceLocations, setAttendanceLocations] = useState<AdminAttendanceLocation[]>([]);
+  const [selfServiceAttendance, setSelfServiceAttendance] = useState(employee.selfServiceAttendance);
   const [startDate, setStartDate] = useState(employee.startDate ?? "");
   const [ppsNumber, setPpsNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -804,6 +812,7 @@ function EditEmployeeModal({
         role,
         teamId: teamId || null,
         attendanceLocationId: attendanceLocationId || null,
+        selfServiceAttendance,
         startDate: startDate || undefined,
       });
       await upsertEmployeeDetails(employee.id, { ppsNumber, dateOfBirth, phoneNumber, address, placeOfBirth });
@@ -857,6 +866,10 @@ function EditEmployeeModal({
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
+          </label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={selfServiceAttendance} onChange={(e) => setSelfServiceAttendance(e.target.checked)} disabled={saving} />
+            Allow self-service clock-in (skip the kiosk)
           </label>
           <label>
             Start date
